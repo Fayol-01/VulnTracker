@@ -15,7 +15,7 @@ const Header = () => {
     { name: 'Vulnerabilities', path: '/vulnerabilities' },
     { name: 'Threats', path: '/threats' },
     { name: 'Patches', path: '/patches' },
-    { name: 'Applications', path: '/applications' },
+    { name: 'Software', path: '/software' },
     { name: 'About', path: '/about' },
   ];
 

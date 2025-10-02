@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import Vulnerabilities from './pages/Vulnerabilities_new';
 import Threats from './pages/Threats';
 import Patches from './pages/Patches';
+import Software from './pages/Software';
 import Login from './pages/Login';
 import Placeholder from './components/Placeholder';
 import './styles/global.css';
@@ -20,7 +21,7 @@ export default function App() {
                     <Route path="/vulnerabilities" element={<Vulnerabilities />} />
                     <Route path="/threats" element={<Threats />} />
                     <Route path="/patches" element={<Patches />} />
-                    <Route path="/applications" element={<Placeholder title="Applications" />} />
+                    <Route path="/software" element={<Software />} />
                     <Route path="/about" element={<Placeholder title="About" />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
