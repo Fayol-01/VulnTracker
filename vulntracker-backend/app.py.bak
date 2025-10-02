@@ -1,0 +1,224 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from supabase import create_client, Client
+from dotenv import load_dotenv
+import os
+
+# Load environment variables
+load_dotenv()
+
+app = Flask(__name__)
+CORS(app)
+
+# Initialize Supabase client
+supabase: Client = create_client(
+    os.getenv("SUPABASE_URL"),
+    os.getenv("SUPABASE_KEY")
+)
+
+# Models
+class Vendor(db.Model):
+    __tablename__ = 'vendors'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    software = db.relationship('Software', backref='vendor', lazy=True)
+
+class Software(db.Model):
+    __tablename__ = 'software'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id', ondelete='CASCADE'), nullable=False)
+    vulnerabilities = db.relationship('Vulnerability', backref='software', lazy=True)
+
+class Vulnerability(db.Model):
+    __tablename__ = 'vulnerabilities'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    description = db.Column(db.Text)
+    software_id = db.Column(db.Integer, db.ForeignKey('software.id', ondelete='CASCADE'), nullable=False)
+    threats = db.relationship('Threat', secondary='vulnerability_threats', backref='vulnerabilities')
+    patches = db.relationship('Patch', secondary='vulnerability_patches', backref='vulnerabilities')
+
+class Threat(db.Model):
+    __tablename__ = 'threats'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    description = db.Column(db.Text)
+
+class Patch(db.Model):
+    __tablename__ = 'patches'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    url = db.Column(db.String(255))
+
+# Association tables
+vulnerability_threats = db.Table('vulnerability_threats',
+    db.Column('vulnerability_id', db.Integer, db.ForeignKey('vulnerabilities.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('threat_id', db.Integer, db.ForeignKey('threats.id', ondelete='CASCADE'), primary_key=True)
+)
+
+vulnerability_patches = db.Table('vulnerability_patches',
+    db.Column('vulnerability_id', db.Integer, db.ForeignKey('vulnerabilities.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('patch_id', db.Integer, db.ForeignKey('patches.id', ondelete='CASCADE'), primary_key=True)
+)
+
+# Routes
+@app.route("/api/vendors", methods=['GET', 'POST'])
+def handle_vendors():
+    if request.method == 'GET':
+        vendors = Vendor.query.all()
+        return jsonify([{"id": v.id, "name": v.name} for v in vendors])
+    elif request.method == 'POST':
+        data = request.get_json()
+        new_vendor = Vendor(name=data['name'])
+        db.session.add(new_vendor)
+        try:
+            db.session.commit()
+            return jsonify({"id": new_vendor.id, "name": new_vendor.name}), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+@app.route("/api/software", methods=['GET', 'POST'])
+def handle_software():
+    if request.method == 'GET':
+        software = Software.query.all()
+        return jsonify([{
+            "id": s.id,
+            "name": s.name,
+            "vendor_id": s.vendor_id,
+            "vendor_name": s.vendor.name
+        } for s in software])
+    elif request.method == 'POST':
+        data = request.get_json()
+        new_software = Software(name=data['name'], vendor_id=data['vendor_id'])
+        db.session.add(new_software)
+        try:
+            db.session.commit()
+            return jsonify({
+                "id": new_software.id,
+                "name": new_software.name,
+                "vendor_id": new_software.vendor_id
+            }), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+@app.route("/api/vulnerabilities", methods=['GET', 'POST'])
+def handle_vulnerabilities():
+    if request.method == 'GET':
+        vulns = Vulnerability.query.all()
+        return jsonify([{
+            "id": v.id,
+            "name": v.name,
+            "description": v.description,
+            "software_id": v.software_id,
+            "software_name": v.software.name,
+            "vendor_name": v.software.vendor.name,
+            "threats": [{"id": t.id, "name": t.name} for t in v.threats],
+            "patches": [{"id": p.id, "name": p.name, "url": p.url} for p in v.patches]
+        } for v in vulns])
+    elif request.method == 'POST':
+        data = request.get_json()
+        new_vuln = Vulnerability(
+            name=data['name'],
+            description=data['description'],
+            software_id=data['software_id']
+        )
+        db.session.add(new_vuln)
+        try:
+            db.session.commit()
+            return jsonify({
+                "id": new_vuln.id,
+                "name": new_vuln.name,
+                "description": new_vuln.description,
+                "software_id": new_vuln.software_id
+            }), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+@app.route("/api/threats", methods=['GET', 'POST'])
+def handle_threats():
+    if request.method == 'GET':
+        threats = Threat.query.all()
+        return jsonify([{
+            "id": t.id,
+            "name": t.name,
+            "description": t.description
+        } for t in threats])
+    elif request.method == 'POST':
+        data = request.get_json()
+        new_threat = Threat(name=data['name'], description=data['description'])
+        db.session.add(new_threat)
+        try:
+            db.session.commit()
+            return jsonify({
+                "id": new_threat.id,
+                "name": new_threat.name,
+                "description": new_threat.description
+            }), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+@app.route("/api/patches", methods=['GET', 'POST'])
+def handle_patches():
+    if request.method == 'GET':
+        patches = Patch.query.all()
+        return jsonify([{
+            "id": p.id,
+            "name": p.name,
+            "url": p.url
+        } for p in patches])
+    elif request.method == 'POST':
+        data = request.get_json()
+        new_patch = Patch(name=data['name'], url=data['url'])
+        db.session.add(new_patch)
+        try:
+            db.session.commit()
+            return jsonify({
+                "id": new_patch.id,
+                "name": new_patch.name,
+                "url": new_patch.url
+            }), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+@app.route("/api/vulnerabilities/<int:vuln_id>/threats", methods=['POST'])
+def link_vulnerability_threat(vuln_id):
+    data = request.get_json()
+    vuln = Vulnerability.query.get_or_404(vuln_id)
+    threat = Threat.query.get_or_404(data['threat_id'])
+    vuln.threats.append(threat)
+    try:
+        db.session.commit()
+        return jsonify({"message": "Threat linked successfully"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+
+@app.route("/api/vulnerabilities/<int:vuln_id>/patches", methods=['POST'])
+def link_vulnerability_patch(vuln_id):
+    data = request.get_json()
+    vuln = Vulnerability.query.get_or_404(vuln_id)
+    patch = Patch.query.get_or_404(data['patch_id'])
+    vuln.patches.append(patch)
+    try:
+        db.session.commit()
+        return jsonify({"message": "Patch linked successfully"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+
+@app.route("/health")
+def health():
+    try:
+        db.session.execute(db.text("SELECT 1"))
+        return {"status": "ok", "db": "connected"}
+    except Exception as e:
+        return {"status": "error", "details": str(e)}, 500
+
+if __name__ == "__main__":
+    app.run(debug=True)
