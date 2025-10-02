@@ -134,66 +134,77 @@ def handle_vulnerabilities():
             return jsonify({"error": str(e)}), 500
 
 @app.route("/api/threats", methods=['GET', 'POST'])
+#@app.route("/api/threats", methods=['GET', 'POST'])
 def handle_threats():
-    if request.method == 'GET':
+    if request.method == "GET":
         try:
-            response = supabase.table('threats').select(
-                """
-                *,
-                threat_type:threat_type_id(*),
-                vulnerabilities:vulnerability_threats(
-                    vulnerability:vulnerability_id(
-                        *,
-                        software:software_id(
-                            *,
-                            vendor:vendor_id(*)
-                        )
-                    )
-                )
-                """
-            ).order('created_at.desc').execute()
-            
-            print("Raw threats response:", response.data)  # Debug print
-            
+            threat_res = supabase.table("threats").select("*").order("created_at", desc=True).execute()
+            threat_type_res = supabase.table("threat_types").select("*").execute()
+            vuln_threat_res = supabase.table("vulnerability_threats").select("*").execute()
+            vuln_res = supabase.table("vulnerabilities").select("*").execute()
+            software_res = supabase.table("software").select("*").execute()
+            vendor_res = supabase.table("vendors").select("*").execute()
+
+            # Create mapping dictionaries
+            threat_type_map = {tt["id"]: tt for tt in (threat_type_res.data or [])}
+            vuln_map = {v["id"]: v for v in (vuln_res.data or [])}
+            software_map = {s["id"]: s for s in (software_res.data or [])}
+            vendor_map = {v["id"]: v for v in (vendor_res.data or [])}
+
+            # Map vulnerabilities to threats
+            threat_vuln_map = {}
+            for vt in vuln_threat_res.data or []:
+                threat_id = vt.get("threat_id")
+                vuln_id = vt.get("vulnerability_id")
+                if threat_id not in threat_vuln_map:
+                    threat_vuln_map[threat_id] = []
+                threat_vuln_map[threat_id].append(vuln_map.get(vuln_id))
+
             threats = []
-            for threat in response.data:
-                threat_type = threat.get("threat_type", {}) or {}
+            for threat in threat_res.data or []:
+                threat_type = threat_type_map.get(threat.get("threat_type_id"), {})
                 vulnerabilities = []
-                
-                for vt in threat.get("vulnerabilities", []):
-                    vuln = vt.get("vulnerability", {}) or {}
-                    software = vuln.get("software", {}) or {}
-                    vendor = software.get("vendor", {}) or {}
-                    
+                for vuln in threat_vuln_map.get(threat["id"], []):
+                    if not vuln:
+                        continue
+                    software = software_map.get(vuln.get("software_id"), {})
+                    vendor = vendor_map.get(software.get("vendor_id")) if software else {}
                     vulnerabilities.append({
                         "id": vuln.get("id"),
-                        "cve_id": vuln.get("cve_id", "Unknown CVE"),
-                        "severity": vuln.get("severity", "Unknown"),
-                        "cvss_score": vuln.get("cvss_score", 0.0),
-                        "software_name": software.get("name", "Unknown Software"),
-                        "software_version": software.get("version", "Unknown Version"),
-                        "vendor_name": vendor.get("name", "Unknown Vendor")
+                        "cve_id": vuln.get("cve_id"),
+                        "summary": vuln.get("summary"),
+                        "severity": vuln.get("severity"),
+                        "cvss_score": vuln.get("cvss_score"),
+                        "software": {
+                            "id": software.get("id"),
+                            "name": software.get("name"),
+                            "version": software.get("version"),
+                            "vendor": {
+                                "id": vendor.get("id"),
+                                "name": vendor.get("name"),
+                                "website": vendor.get("website")
+                            } if vendor else None
+                        }
                     })
-                
-                transformed_threat = {
-                    "id": threat["id"],
-                    "name": threat["name"],
-                    "description": threat["description"] or "",
+
+                threats.append({
+                    "id": threat.get("id"),
+                    "name": threat.get("name"),
+                    "description": threat.get("description"),
                     "threat_type_name": threat_type.get("name", "Unknown Type"),
                     "threat_type_description": threat_type.get("description", ""),
                     "vulnerabilities": vulnerabilities
-                }
-                print("Transformed threat:", transformed_threat)  # Debug print
-                threats.append(transformed_threat)
-            
+                })
+
             return jsonify(threats)
         except Exception as e:
             print(f"Error fetching threats: {str(e)}")
             return jsonify({"error": str(e)}), 500
-    elif request.method == 'POST':
+
+    elif request.method == "POST":
         try:
             data = request.get_json()
-            response = supabase.table('threats').insert({
+            response = supabase.table("threats").insert({
                 "name": data['name'],
                 "description": data.get('description'),
                 "threat_type_id": data.get('threat_type_id')
@@ -202,7 +213,6 @@ def handle_threats():
         except Exception as e:
             print(f"Error creating threat: {str(e)}")
             return jsonify({"error": str(e)}), 500
-
 @app.route("/api/threat-types", methods=['GET', 'POST'])
 def handle_threat_types():
     if request.method == 'GET':
@@ -228,6 +238,7 @@ def handle_threat_types():
 def handle_patches():
     if request.method == 'GET':
         try:
+            # Fetch patches with nested vulnerability → software → vendor
             response = supabase.table('patches').select(
                 """
                 *,
@@ -240,34 +251,43 @@ def handle_patches():
                 )
                 """
             ).order('released.desc').execute()
-            
-            print("Raw patches response:", response.data)  # Debug print
-            
+
             patches = []
             for patch in response.data:
-                vulnerability = patch.get("vulnerability", {}) or {}
-                software = vulnerability.get("software", {}) or {}
-                vendor = software.get("vendor", {}) or {}
-                
+                vuln = patch.get("vulnerability") or {}
+                software = vuln.get("software") or {}
+                vendor = software.get("vendor") or {}
+
+                # Construct properly nested object
                 transformed_patch = {
                     "id": patch["id"],
-                    "url": patch["url"],
-                    "released": patch["released"],
-                    "vulnerability_id": patch["vulnerability_id"],
-                    "cve_id": vulnerability.get("cve_id", "Unknown CVE"),
-                    "severity": vulnerability.get("severity", "Unknown"),
-                    "cvss_score": vulnerability.get("cvss_score", 0.0),
-                    "software_name": software.get("name", "Unknown Software"),
-                    "software_version": software.get("version", "Unknown Version"),
-                    "vendor_name": vendor.get("name", "Unknown Vendor")
+                    "url": patch.get("url"),
+                    "released": patch.get("released"),
+                    "vulnerability": {
+                        "id": vuln.get("id"),
+                        "cve_id": vuln.get("cve_id"),
+                        "summary": vuln.get("summary"),
+                        "severity": vuln.get("severity"),
+                        "cvss_score": vuln.get("cvss_score"),
+                        "software": {
+                            "id": software.get("id"),
+                            "name": software.get("name"),
+                            "version": software.get("version"),
+                            "vendor": {
+                                "id": vendor.get("id"),
+                                "name": vendor.get("name"),
+                                "website": vendor.get("website")
+                            } if vendor else None
+                        } if software else None
+                    } if vuln else None
                 }
-                print("Transformed patch:", transformed_patch)  # Debug print
                 patches.append(transformed_patch)
-            
+
             return jsonify(patches)
         except Exception as e:
             print(f"Error fetching patches: {str(e)}")
             return jsonify({"error": str(e)}), 500
+
     elif request.method == 'POST':
         try:
             data = request.get_json()
@@ -276,10 +296,50 @@ def handle_patches():
                 "url": data['url'],
                 "released": data.get('released')
             }).execute()
-            return jsonify(response.data[0]), 201
+
+            # Return nested structure for newly created patch
+            patch = response.data[0]
+            vuln_res = supabase.table('vulnerabilities').select(
+                """
+                *,
+                software:software_id(
+                    *,
+                    vendor:vendor_id(*)
+                )
+                """
+            ).eq("id", patch["vulnerability_id"]).single().execute()
+            vuln = vuln_res.data
+            software = vuln.get("software") if vuln else {}
+            vendor = software.get("vendor") if software else {}
+
+            transformed_patch = {
+                "id": patch["id"],
+                "url": patch.get("url"),
+                "released": patch.get("released"),
+                "vulnerability": {
+                    "id": vuln.get("id") if vuln else None,
+                    "cve_id": vuln.get("cve_id") if vuln else None,
+                    "summary": vuln.get("summary") if vuln else None,
+                    "severity": vuln.get("severity") if vuln else None,
+                    "cvss_score": vuln.get("cvss_score") if vuln else None,
+                    "software": {
+                        "id": software.get("id"),
+                        "name": software.get("name"),
+                        "version": software.get("version"),
+                        "vendor": {
+                            "id": vendor.get("id"),
+                            "name": vendor.get("name"),
+                            "website": vendor.get("website")
+                        } if vendor else None
+                    } if software else None
+                } if vuln else None
+            }
+
+            return jsonify(transformed_patch), 201
         except Exception as e:
             print(f"Error creating patch: {str(e)}")
             return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/vulnerabilities/<int:vuln_id>/threats", methods=['POST'])
 def link_vulnerability_threat(vuln_id):
