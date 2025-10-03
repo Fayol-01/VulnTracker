@@ -12,56 +12,56 @@ import {
 const Home = () => {
   const navigate = useNavigate();
 
-//   const stats = [
-//     {
-//       label: 'Total Vulnerabilities',
-//       value: '12,345',
-//       icon: Shield,
-//       color: 'text-blue-600',
-//     },
-//     {
-//       label: 'Active Threats',
-//       value: '456',
-//       icon: AlertTriangle,
-//       color: 'text-orange-600',
-//     },
-//     {
-//       label: 'Recent Patches',
-//       value: '789',
-//       icon: Wrench,
-//       color: 'text-green-600',
-//     },
-//     {
-//       label: 'Monitored Applications',
-//       value: '1,230',
-//       icon: Boxes,
-//       color: 'text-purple-600',
-//     },
-//   ];
+  const stats = [
+    {
+      label: 'Total Vulnerabilities',
+      value: '12,345',
+      icon: Shield,
+      color: 'text-blue-600',
+    },
+    {
+      label: 'Active Threats',
+      value: '456',
+      icon: AlertTriangle,
+      color: 'text-orange-600',
+    },
+    {
+      label: 'Recent Patches',
+      value: '789',
+      icon: Wrench,
+      color: 'text-green-600',
+    },
+    {
+      label: 'Monitored Applications',
+      value: '1,230',
+      icon: Boxes,
+      color: 'text-purple-600',
+    },
+  ];
 
-//   const recentVulnerabilities = [
-//     {
-//       id: 'CVE-2023-4567',
-//       title: 'Remote Code Execution in AcmeOS',
-//       description: 'A critical vulnerability found in AcmeOS kernel versions 3.x to 5.x.',
-//       severity: 'critical',
-//       date: '2023-10-25',
-//     },
-//     {
-//       id: 'CVE-2023-8901',
-//       title: 'Cross-Site Scripting in SecureMail',
-//       description: 'Authenticated XSS vulnerability affecting the SecureMail client.',
-//       severity: 'high',
-//       date: '2023-10-20',
-//     },
-//     {
-//       id: 'CVE-2023-2345',
-//       title: 'Information Disclosure in FileVault',
-//       description: 'A minor flaw allowing unauthorized access to non-critical metadata.',
-//       severity: 'medium',
-//       date: '2023-10-15',
-//     },
-//   ];
+  const recentVulnerabilities = [
+    {
+      id: 'CVE-2023-4567',
+      title: 'Remote Code Execution in AcmeOS',
+      description: 'A critical vulnerability found in AcmeOS kernel versions 3.x to 5.x.',
+      severity: 'critical',
+      date: '2023-10-25',
+    },
+    {
+      id: 'CVE-2023-8901',
+      title: 'Cross-Site Scripting in SecureMail',
+      description: 'Authenticated XSS vulnerability affecting the SecureMail client.',
+      severity: 'high',
+      date: '2023-10-20',
+    },
+    {
+      id: 'CVE-2023-2345',
+      title: 'Information Disclosure in FileVault',
+      description: 'A minor flaw allowing unauthorized access to non-critical metadata.',
+      severity: 'medium',
+      date: '2023-10-15',
+    },
+  ];
 
   return (
     <div className="space-y-12">

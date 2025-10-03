@@ -134,7 +134,7 @@ def handle_vulnerabilities():
             return jsonify({"error": str(e)}), 500
 
 @app.route("/api/threats", methods=['GET', 'POST'])
-
+#@app.route("/api/threats", methods=['GET', 'POST'])
 def handle_threats():
     if request.method == "GET":
         try:

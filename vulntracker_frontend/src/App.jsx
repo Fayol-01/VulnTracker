@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import Dashboard from './components/Dashboard';
+import Home from './pages/Home';
 import Vulnerabilities from './pages/Vulnerabilities_new';
 import Threats from './pages/Threats';
 import Patches from './pages/Patches';
@@ -18,6 +19,7 @@ export default function App() {
             <main className="container mx-auto px-4 py-8 flex-grow">
                 <Routes>
                     <Route path="/" element={<Dashboard />} />
+                    <Route path="/home" element={<Home />} />
                     <Route path="/vulnerabilities" element={<Vulnerabilities />} />
                     <Route path="/threats" element={<Threats />} />
                     <Route path="/patches" element={<Patches />} />
