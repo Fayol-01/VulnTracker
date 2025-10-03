@@ -2,17 +2,61 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from flask_jwt_extended import JWTManager, jwt_required, create_access_token
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_swagger_ui import get_swaggerui_blueprint
+from datetime import datetime, timedelta
+import structlog
 import os
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# Configure structured logging
+logger = structlog.get_logger()
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer()
+    ]
+)
+
+from schemas import (
+    VendorSchema, SoftwareSchema, VulnerabilitySchema,
+    PatchSchema, ThreatSchema, ThreatTypeSchema, VulnerabilityThreatSchema
+)
+
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ]
+)
+logger = structlog.get_logger()
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key')  # Change in production
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
+
+# Initialize extensions
+jwt = JWTManager(app)
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
+
 CORS(app, resources={
     r"/api/*": {
         "origins": ["http://localhost:5173"],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "allow_headers": ["Content-Type", "Authorization"]
     }
 })
 
@@ -26,58 +70,207 @@ try:
         
     supabase: Client = create_client(supabase_url, supabase_key)
 except Exception as e:
-    print(f"Error initializing Supabase client: {str(e)}")
+    logger.error("supabase_init_error", error=str(e))
     raise
 
-# Routes
+# Setup Swagger UI
+SWAGGER_URL = '/api/docs'
+API_URL = '/static/swagger.json'
+swaggerui_blueprint = get_swaggerui_blueprint(
+    SWAGGER_URL,
+    API_URL,
+    config={'app_name': "VulnTracker API"}
+)
+app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
+
+# Error handlers
+@app.errorhandler(Exception)
+def handle_error(error):
+    logger.error("unhandled_error", 
+                error=str(error),
+                type=error.__class__.__name__)
+    return jsonify({
+        "error": str(error),
+        "type": error.__class__.__name__,
+        "status": "error",
+        "timestamp": datetime.utcnow().isoformat()
+    }), 500
+
+def validate_supabase_token():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None, ("No valid authentication token provided", 401)
+        
+    try:
+        token = auth_header.split(' ')[1]
+        # Verify token with Supabase
+        response = supabase.auth.get_user(token)
+        if not response.user:
+            return None, ("Invalid authentication token", 401)
+        return response.user, None
+    except Exception as e:
+        logger.error("auth_error", error=str(e))
+        return None, ("Invalid authentication token", 401)
+
+@app.before_request
+def before_request():
+    logger.info("request_started",
+                path=request.path,
+                method=request.method,
+                ip=get_remote_address())
+    
+    # Skip auth for non-API routes and OPTIONS requests
+    if not request.path.startswith('/api/') or request.method == 'OPTIONS':
+        return
+    
+    # Skip auth for login/register routes
+    if request.path in ['/api/auth/login', '/api/auth/register']:
+        return
+    
+    user, error = validate_supabase_token()
+    if error:
+        return jsonify({"error": error[0]}), error[1]
+    
+    # Store validated user in request context
+    request.user = user
+
+# Authentication routes
+@app.route("/api/auth/register", methods=['POST'])
+def register():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get('password')
+        
+        # Check if user already exists
+        existing_user = supabase.table('users').select("*").eq('email', email).execute()
+        if existing_user.data:
+            return jsonify({"error": "User already exists"}), 409
+            
+        # Create new user
+        password_hash = generate_password_hash(password)
+        new_user = supabase.table('users').insert({
+            "email": email,
+            "password_hash": password_hash
+        }).execute()
+        
+        # Generate token
+        access_token = create_access_token(identity=email)
+        return jsonify({
+            "token": access_token,
+            "user": {"email": email}
+        }), 201
+        
+    except Exception as e:
+        logger.error("registration_error", error=str(e))
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/auth/login", methods=['POST'])
+def login():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get('password')
+        
+        # Find user
+        user_result = supabase.table('users').select("*").eq('email', email).execute()
+        if not user_result.data:
+            return jsonify({"error": "Invalid credentials"}), 401
+            
+        user = user_result.data[0]
+        
+        # Verify password
+        if not check_password_hash(user['password_hash'], password):
+            return jsonify({"error": "Invalid credentials"}), 401
+            
+        # Generate token
+        access_token = create_access_token(identity=email)
+        return jsonify({
+            "token": access_token,
+            "user": {"email": email}
+        })
+        
+    except Exception as e:
+        logger.error("login_error", error=str(e))
+        return jsonify({"error": str(e)}), 500
+
+# Protected routes
 @app.route("/api/vendors", methods=['GET', 'POST'])
 def handle_vendors():
+    if not hasattr(request, 'user'):
+        return jsonify({"error": "Authentication required"}), 401
+
     if request.method == 'GET':
         try:
-            response = supabase.table('vendors').select("*").order('created_at.desc').execute()
+            response = supabase.table('vendors').select("*").order('created_at', desc=True).execute()
+            if not response.data:
+                return jsonify([])
             return jsonify(response.data)
         except Exception as e:
-            print(f"Error fetching vendors: {str(e)}")
+            logger.error("vendor_fetch_error", error=str(e))
             return jsonify({"error": str(e)}), 500
     elif request.method == 'POST':
         try:
             data = request.get_json()
+            if not data or not data.get('name'):
+                return jsonify({"error": "Name is required"}), 400
+                
             response = supabase.table('vendors').insert({
                 "name": data['name'],
-                "website": data.get('website')
+                "website": data.get('website'),
+                "user_id": request.user.id
             }).execute()
+            
+            if not response.data:
+                return jsonify({"error": "Failed to create vendor"}), 500
+                
             return jsonify(response.data[0]), 201
         except Exception as e:
-            print(f"Error creating vendor: {str(e)}")
+            logger.error("vendor_create_error", error=str(e))
             return jsonify({"error": str(e)}), 500
 
 @app.route("/api/software", methods=['GET', 'POST'])
 def handle_software():
     if request.method == 'GET':
         try:
-            response = supabase.table('software').select(
-                "*,vendors(id,name,website)"
-            ).execute()
-            return jsonify([{
-                **item,
-                "vendor_name": item["vendors"]["name"] if item.get("vendors") else None
-            } for item in response.data])
+            # Fetch software with vendor relationship
+            software_res = supabase.table("software").select("*,vendors(id,name,website)").execute()
+
+            # Fetch vulnerabilities for counting
+            vuln_res = supabase.table("vulnerabilities").select("id,software_id").execute()
+
+            # Build vulnerability count map
+            vuln_count_map = {}
+            for v in vuln_res.data or []:
+                sid = v.get("software_id")
+                if sid:
+                    vuln_count_map[sid] = vuln_count_map.get(sid, 0) + 1
+
+            # Build final response
+            result = []
+            for item in software_res.data or []:
+                result.append({
+                    **item,
+                    "vendor_name": item["vendors"]["name"] if item.get("vendors") else None,
+                    "vulnerability_count": vuln_count_map.get(item["id"], 0),
+                    "updated_at": item.get("updated_at")  # Will return if column exists
+                })
+
+            return jsonify(result)
+
         except Exception as e:
             print(f"Error fetching software: {str(e)}")
             return jsonify({"error": str(e)}), 500
+
     elif request.method == 'POST':
         try:
-            data = request.get_json()
-            response = supabase.table('software').insert({
-                "name": data['name'],
-                "vendor_id": data['vendor_id'],
-                "version": data.get('version')
-            }).execute()
-            return jsonify(response.data[0]), 201
+            data = request.json
+            response = supabase.table("software").insert(data).execute()
+            return jsonify(response.data), 201
         except Exception as e:
-            print(f"Error creating software: {str(e)}")
+            print(f"Error adding software: {str(e)}")
             return jsonify({"error": str(e)}), 500
-
+        
 #@app.route("/api/vulnerabilities", methods=['GET', 'POST'])
 @app.route("/api/vulnerabilities", methods=["GET", "POST", "DELETE"])
 def handle_vulnerabilities():
@@ -238,45 +431,68 @@ def handle_threat_types():
 def handle_patches():
     if request.method == 'GET':
         try:
-            # Fetch patches with nested vulnerability → software → vendor
-            response = supabase.table('patches').select(
-                """
-                *,
-                vulnerability:vulnerability_id(
-                    *,
-                    software:software_id(
-                        *,
-                        vendor:vendor_id(*)
-                    )
-                )
-                """
-            ).order('released.desc').execute()
+            # Fetch all relevant data
+            patches_res = supabase.table("patches").select("*").execute()
+            vuln_res = supabase.table("vulnerabilities").select("*").execute()
+            software_res = supabase.table("software").select("*").execute()
+            vendor_res = supabase.table("vendors").select("*").execute()
+            vuln_threat_res = supabase.table("vulnerability_threats").select("*").execute()
+            threats_res = supabase.table("threats").select("*").execute()
+            threat_types_res = supabase.table("threat_types").select("*").execute()
 
+            # Create mapping dictionaries
+            vuln_map = {v["id"]: v for v in (vuln_res.data or [])}
+            software_map = {s["id"]: s for s in (software_res.data or [])}
+            vendor_map = {v["id"]: v for v in (vendor_res.data or [])}
+            threat_map = {t["id"]: t for t in (threats_res.data or [])}
+            threat_type_map = {tt["id"]: tt for tt in (threat_types_res.data or [])}
+
+            # Build vuln → threats mapping (many-to-many)
+            vuln_threat_map = {}
+            for vt in vuln_threat_res.data or []:
+                vuln_id = vt.get("vulnerability_id")
+                threat_id = vt.get("threat_id")
+                if vuln_id not in vuln_threat_map:
+                    vuln_threat_map[vuln_id] = []
+                threat = threat_map.get(threat_id)
+                if threat:
+                    # attach threat_type
+                    threat_type = threat_type_map.get(threat.get("threat_type_id"))
+                    threat_obj = {
+                        "id": threat["id"],
+                        "name": threat["name"],
+                        "description": threat["description"],
+                        "threat_type": threat_type if threat_type else None
+                    }
+                    vuln_threat_map[vuln_id].append(threat_obj)
+
+            # Construct final response
             patches = []
-            for patch in response.data:
-                vuln = patch.get("vulnerability") or {}
-                software = vuln.get("software") or {}
-                vendor = software.get("vendor") or {}
+            for patch in patches_res.data or []:
+                vuln = vuln_map.get(patch.get("vulnerability_id"))
+                software = software_map.get(vuln["software_id"]) if vuln else None
+                vendor = vendor_map.get(software["vendor_id"]) if software else None
 
-                # Construct properly nested object
                 transformed_patch = {
                     "id": patch["id"],
                     "url": patch.get("url"),
                     "released": patch.get("released"),
                     "vulnerability": {
-                        "id": vuln.get("id"),
-                        "cve_id": vuln.get("cve_id"),
-                        "summary": vuln.get("summary"),
-                        "severity": vuln.get("severity"),
-                        "cvss_score": vuln.get("cvss_score"),
+                        "id": vuln.get("id") if vuln else None,
+                        "cve_id": vuln.get("cve_id") if vuln else None,
+                        "summary": vuln.get("summary") if vuln else None,
+                        "severity": vuln.get("severity") if vuln else None,
+                        "cvss_score": vuln.get("cvss_score") if vuln else None,
+                        "published": vuln.get("published") if vuln else None,
+                        "threats": vuln_threat_map.get(vuln["id"], []) if vuln else [],
                         "software": {
-                            "id": software.get("id"),
-                            "name": software.get("name"),
-                            "version": software.get("version"),
+                            "id": software.get("id") if software else None,
+                            "name": software.get("name") if software else None,
+                            "version": software.get("version") if software else None,
                             "vendor": {
-                                "id": vendor.get("id"),
-                                "name": vendor.get("name"),
-                                "website": vendor.get("website")
+                                "id": vendor.get("id") if vendor else None,
+                                "name": vendor.get("name") if vendor else None,
+                                "website": vendor.get("website") if vendor else None
                             } if vendor else None
                         } if software else None
                     } if vuln else None
@@ -297,20 +513,25 @@ def handle_patches():
                 "released": data.get('released')
             }).execute()
 
-            # Return nested structure for newly created patch
             patch = response.data[0]
-            vuln_res = supabase.table('vulnerabilities').select(
-                """
-                *,
-                software:software_id(
-                    *,
-                    vendor:vendor_id(*)
-                )
-                """
-            ).eq("id", patch["vulnerability_id"]).single().execute()
-            vuln = vuln_res.data
-            software = vuln.get("software") if vuln else {}
-            vendor = software.get("vendor") if software else {}
+
+            # Fetch nested vulnerability + software + vendor + threats
+            vuln = supabase.table("vulnerabilities").select("*").eq("id", patch["vulnerability_id"]).single().execute().data
+            software = supabase.table("software").select("*").eq("id", vuln["software_id"]).single().execute().data if vuln else None
+            vendor = supabase.table("vendors").select("*").eq("id", software["vendor_id"]).single().execute().data if software else None
+
+            vuln_threat_res = supabase.table("vulnerability_threats").select("*").eq("vulnerability_id", vuln["id"]).execute()
+            threats = []
+            for vt in vuln_threat_res.data or []:
+                threat = supabase.table("threats").select("*").eq("id", vt["threat_id"]).single().execute().data
+                if threat:
+                    threat_type = supabase.table("threat_types").select("*").eq("id", threat["threat_type_id"]).single().execute().data
+                    threats.append({
+                        "id": threat["id"],
+                        "name": threat["name"],
+                        "description": threat["description"],
+                        "threat_type": threat_type
+                    })
 
             transformed_patch = {
                 "id": patch["id"],
@@ -322,14 +543,16 @@ def handle_patches():
                     "summary": vuln.get("summary") if vuln else None,
                     "severity": vuln.get("severity") if vuln else None,
                     "cvss_score": vuln.get("cvss_score") if vuln else None,
+                    "published": vuln.get("published") if vuln else None,
+                    "threats": threats,
                     "software": {
-                        "id": software.get("id"),
-                        "name": software.get("name"),
-                        "version": software.get("version"),
+                        "id": software.get("id") if software else None,
+                        "name": software.get("name") if software else None,
+                        "version": software.get("version") if software else None,
                         "vendor": {
-                            "id": vendor.get("id"),
-                            "name": vendor.get("name"),
-                            "website": vendor.get("website")
+                            "id": vendor.get("id") if vendor else None,
+                            "name": vendor.get("name") if vendor else None,
+                            "website": vendor.get("website") if vendor else None
                         } if vendor else None
                     } if software else None
                 } if vuln else None
@@ -339,8 +562,7 @@ def handle_patches():
         except Exception as e:
             print(f"Error creating patch: {str(e)}")
             return jsonify({"error": str(e)}), 500
-
-
+        
 @app.route("/api/vulnerabilities/<int:vuln_id>/threats", methods=['POST'])
 def link_vulnerability_threat(vuln_id):
     try:
