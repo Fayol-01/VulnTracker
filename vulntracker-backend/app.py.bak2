@@ -134,7 +134,7 @@ def handle_vulnerabilities():
             return jsonify({"error": str(e)}), 500
 
 @app.route("/api/threats", methods=['GET', 'POST'])
-
+#@app.route("/api/threats", methods=['GET', 'POST'])
 def handle_threats():
     if request.method == "GET":
         try:
@@ -238,19 +238,213 @@ def handle_threat_types():
 def handle_patches():
     if request.method == 'GET':
         try:
-            # Fetch patches with nested vulnerability → software → vendor
+            # Fetch patches with related data
+            response = supabase.table('patches').select("""
+                id,
+                url,
+                released,
+                vulnerability:vulnerabilities(
+                    id,
+                    cve_id,
+                    cvss_score,
+                    summary,
+                    severity,
+                    published,
+                    software:software_id(
+                        id,
+                        name,
+                        version,
+                        vendor:vendor_id(
+                            id,
+                            name,
+                            website
+                        )
+                    )
+                )
+            """).execute()
+            
+            patches = []
+            for patch in response.data:
+                vulnerability = patch.get('vulnerability', {})
+                software = vulnerability.get('software', {}) if vulnerability else {}
+                vendor = software.get('vendor', {}) if software else {}
+                
+                formatted_patch = {
+                    'id': patch.get('id'),
+                    'url': patch.get('url'),
+                    'released': patch.get('released'),
+                    'vulnerability': {
+                        'id': vulnerability.get('id'),
+                        'cve_id': vulnerability.get('cve_id'),
+                        'cvss_score': vulnerability.get('cvss_score'),
+                        'summary': vulnerability.get('summary'),
+                        'severity': vulnerability.get('severity'),
+                        'published': vulnerability.get('published'),
+                        'software': {
+                            'id': software.get('id'),
+                            'name': software.get('name'),
+                            'version': software.get('version'),
+                            'vendor': vendor
+                        } if software else None
+                    } if vulnerability else None
+                }
+                patches.append(formatted_patch)
+            
+            print("Formatted Patches:", patches)  # Debug log
+            return jsonify(patches)
+        except Exception as e:
+            print(f"Error fetching patches: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+            
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            response = supabase.table('patches').insert({
+                "vulnerability_id": data['vulnerability_id'],
+                "url": data['url'],
+                "released": data.get('released')
+            }).execute()
+            return jsonify(response.data[0]), 201
+        except Exception as e:
+            print(f"Error creating patch: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+
+                # Check if we have any software
+                software_check = supabase.table('software').select("*").limit(1).execute()
+                if not software_check.data:
+                    # Add test software
+                    software = supabase.table('software').insert({
+                        "name": "Test Software",
+                        "vendor_id": vendor_id,
+                        "version": "1.0.0"
+                    }).execute()
+                    software_id = software.data[0]['id']
+                else:
+                    software_id = software_check.data[0]['id']
+
+                # Check if we have any vulnerabilities
+                vuln_check = supabase.table('vulnerabilities').select("*").limit(1).execute()
+                if not vuln_check.data:
+                    # Add test vulnerability
+                    vuln = supabase.table('vulnerabilities').insert({
+                        "software_id": software_id,
+                        "cve_id": "CVE-2023-TEST",
+                        "cvss_score": 7.5,
+                        "summary": "Test vulnerability",
+                        "severity": "High",
+                        "published": "2023-10-03"
+                    }).execute()
+                    vuln_id = vuln.data[0]['id']
+                else:
+                    vuln_id = vuln_check.data[0]['id']
+
+                # Check if we have any patches
+                patch_check = supabase.table('patches').select("*").limit(1).execute()
+                if not patch_check.data:
+                    # Add test patch
+                    supabase.table('patches').insert({
+                        "vulnerability_id": vuln_id,
+                        "url": "https://test-patch.com",
+                        "released": "2023-10-03"
+                    }).execute()
+
+            except Exception as e:
+                print("Error inserting test data:", str(e))
+
+            # Now fetch the patches with all related data
             response = supabase.table('patches').select(
                 """
                 *,
-                vulnerability:vulnerability_id(
-                    *,
-                    software:software_id(
-                        *,
-                        vendor:vendor_id(*)
+                vulnerabilities!vulnerability_id (
+                    id,
+                    cve_id,
+                    cvss_score,
+                    summary,
+                    severity,
+                    published,
+                    software:software_id (
+                        id,
+                        name,
+                        version,
+                        vendor:vendor_id (
+                            id,
+                            name,
+                            website
+                        )
                     )
                 )
                 """
-            ).order('released.desc').execute()
+            ).execute()
+            
+            # Transform the data to proper structure
+            patches = []
+            for patch in response.data:
+                vulnerability_data = patch.get('vulnerabilities', {})
+                software_data = vulnerability_data.get('software', {}) if vulnerability_data else {}
+                vendor_data = software_data.get('vendor', {}) if software_data else {}
+                
+                formatted_patch = {
+                    'id': patch.get('id'),
+                    'url': patch.get('url'),
+                    'released': patch.get('released'),
+                    'vulnerability': {
+                        'id': vulnerability_data.get('id'),
+                        'cve_id': vulnerability_data.get('cve_id'),
+                        'cvss_score': vulnerability_data.get('cvss_score'),
+                        'summary': vulnerability_data.get('summary'),
+                        'severity': vulnerability_data.get('severity'),
+                        'published': vulnerability_data.get('published'),
+                        'software': {
+                            'id': software_data.get('id'),
+                            'name': software_data.get('name'),
+                            'version': software_data.get('version'),
+                            'vendor': {
+                                'id': vendor_data.get('id'),
+                                'name': vendor_data.get('name'),
+                                'website': vendor_data.get('website')
+                            } if vendor_data else None
+                        } if software_data else None
+                    } if vulnerability_data else None
+                }
+                patches.append(formatted_patch)
+            
+            print("Formatted Patches:", patches)
+            return jsonify(patches)
+            
+            # Transform the data to match the expected structure
+            patches = []
+            for patch in response.data:
+                vulnerability = patch.get('vulnerabilities', {})
+                software = vulnerability.get('software', {}) if vulnerability else {}
+                vendor = software.get('vendors', {}) if software else {}
+                
+                formatted_patch = {
+                    'id': patch.get('id'),
+                    'url': patch.get('url'),
+                    'released': patch.get('released'),
+                    'vulnerability': {
+                        'id': vulnerability.get('id'),
+                        'cve_id': vulnerability.get('cve_id'),
+                        'cvss_score': vulnerability.get('cvss_score'),
+                        'summary': vulnerability.get('summary'),
+                        'severity': vulnerability.get('severity'),
+                        'published': vulnerability.get('published'),
+                        'software': {
+                            'id': software.get('id'),
+                            'name': software.get('name'),
+                            'version': software.get('version'),
+                            'vendor': {
+                                'id': vendor.get('id'),
+                                'name': vendor.get('name'),
+                                'website': vendor.get('website')
+                            } if vendor else None
+                        } if software else None
+                    } if vulnerability else None
+                }
+                patches.append(formatted_patch)
+            
+            print("Formatted Patches:", patches)  # Debug print
+            return jsonify(patches)
 
             patches = []
             for patch in response.data:
