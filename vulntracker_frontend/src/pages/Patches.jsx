@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight, ExternalLink } from 'lucide-react';
+import { Plus, Filter, ArrowLeft, ArrowRight, ExternalLink, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
+import { supabase } from '../services/supabase';
 
 const severityColors = {
   Critical: 'bg-red-100 text-red-800',
@@ -16,6 +17,7 @@ const Patches = () => {
   const [error, setError] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [vulnerabilities, setVulnerabilities] = useState([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [newPatch, setNewPatch] = useState({
     vulnerability_id: '',
     url: '',
@@ -41,6 +43,13 @@ const Patches = () => {
       }
     };
     fetchData();
+
+    // Check authentication status
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      setIsAuthenticated(!!data.session);
+    };
+    checkAuth();
   }, []);
 
   const handleCreatePatch = async (e) => {
@@ -58,6 +67,24 @@ const Patches = () => {
     } catch (err) {
       console.error('Error creating patch:', err);
       setCreateError(err.message || 'Failed to create patch. Please try again.');
+    }
+  };
+
+  const handleDeletePatch = async (e, id) => {
+    e.stopPropagation(); // Prevent row click event
+    if (!window.confirm('Are you sure you want to delete this patch? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await api.deletePatch(id);
+      setPatches(patches.filter(item => item.id !== id));
+      if (selectedPatch?.id === id) {
+        setSelectedPatch(null);
+      }
+    } catch (error) {
+      console.error('Error deleting patch:', error);
+      alert('Error deleting patch. Please try again.');
     }
   };
 
@@ -215,9 +242,20 @@ const Patches = () => {
                 Released: {new Date(selectedPatch.released).toLocaleDateString()}
               </div>
             </div>
-            <a href={selectedPatch.url} target="_blank" rel="noopener noreferrer" className="btn-primary inline-flex items-center">
-              Download Patch <ExternalLink className="w-4 h-4 ml-2" />
-            </a>
+            <div className="flex gap-3">
+              {isAuthenticated && (
+                <button
+                  onClick={(e) => handleDeletePatch(e, selectedPatch.id)}
+                  className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                  title="Delete patch"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Patch
+                </button>
+              )}
+              <a href={selectedPatch.url} target="_blank" rel="noopener noreferrer" className="btn-primary inline-flex items-center">
+                Download Patch <ExternalLink className="w-4 h-4 ml-2" />
+              </a>
+            </div>
           </div>
           {selectedPatch.vulnerability && (
             <div className="card p-4">

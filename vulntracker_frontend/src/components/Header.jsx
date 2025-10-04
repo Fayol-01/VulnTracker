@@ -32,20 +32,20 @@ const Header = () => {
     setIsAccountDropdownOpen(false);
   };
 
-  const protectedNavigation = [
-    { name: 'Dashboard', path: '/dashboard' },
+  const navigation = [
+    { name: 'Home', path: '/' },
     { name: 'Vulnerabilities', path: '/vulnerabilities' },
     { name: 'Threats', path: '/threats' },
     { name: 'Patches', path: '/patches' },
     { name: 'Software', path: '/software' },
-  ];
-
-  const publicNavigation = [
-    { name: 'Home', path: '/' },
     { name: 'About', path: '/about' },
   ];
 
-  const navigation = isAuthenticated ? protectedNavigation : publicNavigation;
+  // Dashboard is only shown to authenticated users
+  const authenticatedNavigation = isAuthenticated ? [
+    { name: 'Dashboard', path: '/dashboard' },
+    ...navigation
+  ] : navigation;
 
   return (
     <header className="bg-white shadow-sm">
@@ -61,7 +61,7 @@ const Header = () => {
 
           {/* Desktop navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            {navigation.map((item) => (
+            {authenticatedNavigation.map((item) => (
               <Link
                 key={item.name}
                 to={item.path}
@@ -103,12 +103,20 @@ const Header = () => {
                 )}
               </div>
             ) : (
-              <Link
-                to="/login"
-                className="text-base font-medium text-primary-600 hover:text-primary-700"
-              >
-                Sign in / Sign up
-              </Link>
+              <div className="flex items-center space-x-4">
+                <Link
+                  to="/login"
+                  className="text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  to="/signup"
+                  className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+                >
+                  Sign up
+                </Link>
+              </div>
             )}
           </nav>
 
@@ -158,13 +166,22 @@ const Header = () => {
                   </button>
                 </>
               ) : (
-                <Link
-                  to="/login"
-                  className="text-base font-medium text-primary-600 hover:text-primary-700"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  Sign in / Sign up
-                </Link>
+                <div className="flex flex-col space-y-4 border-t pt-4">
+                  <Link
+                    to="/login"
+                    className="text-primary-600 hover:text-primary-700 font-medium"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 text-center"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Sign up
+                  </Link>
+                </div>
               )}
             </div>
           </div>

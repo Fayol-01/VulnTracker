@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Plus, Filter, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
+import { supabase } from '../services/supabase';
 
 const Threats = () => {
   const [threats, setThreats] = useState([]);
@@ -9,6 +10,7 @@ const Threats = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [newThreat, setNewThreat] = useState({
     name: '',
     description: '',
@@ -35,6 +37,13 @@ const Threats = () => {
     };
 
     fetchData();
+
+    // Check authentication status
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      setIsAuthenticated(!!data.session);
+    };
+    checkAuth();
   }, []);
 
   const handleCreateThreat = async (e) => {
@@ -46,6 +55,28 @@ const Threats = () => {
       setNewThreat({ name: '', description: '', threat_type_id: '' });
     } catch (err) {
       console.error('Error creating threat:', err);
+    }
+  };
+
+  const handleDeleteThreat = async (e, id) => {
+    e.stopPropagation(); // Prevent row click event
+    if (!window.confirm('Are you sure you want to delete this threat? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await api.deleteThreat(id);
+      setThreats(threats.filter(item => item.id !== id));
+      if (selectedThreat?.id === id) {
+        setSelectedThreat(null);
+      }
+    } catch (error) {
+      console.error('Error deleting threat:', error);
+      if (error.message.includes('Cannot delete threat that has vulnerabilities')) {
+        alert('Cannot delete threat that has vulnerabilities. Remove the vulnerabilities first.');
+      } else {
+        alert('Error deleting threat. Please try again.');
+      }
     }
   };
 
@@ -113,7 +144,9 @@ const Threats = () => {
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">{threat.threat_type_name}</span>
                   </td>
                   <td className="table-cell truncate max-w-md">{threat.description}</td>
-                  <td className="table-cell">{threat.vulnerabilities?.length || 0}</td>
+                  <td className="table-cell">
+                    {threat.vulnerabilities?.length || 0}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -125,8 +158,19 @@ const Threats = () => {
       {selectedThreat && (
         <div className="card p-6 space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-display font-bold text-secondary-900">{selectedThreat.name}</h2>
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">{selectedThreat.threat_type_name}</span>
+            <div>
+              <h2 className="text-2xl font-display font-bold text-secondary-900">{selectedThreat.name}</h2>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">{selectedThreat.threat_type_name}</span>
+            </div>
+            {isAuthenticated && (
+              <button
+                onClick={(e) => handleDeleteThreat(e, selectedThreat.id)}
+                className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                title="Delete threat"
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Threat
+              </button>
+            )}
           </div>
 
           <div className="prose max-w-none">

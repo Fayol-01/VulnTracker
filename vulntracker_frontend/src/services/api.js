@@ -2,22 +2,30 @@ import { supabase } from './supabase';
 
 const API_URL = 'http://localhost:5000/api';
 
-const getAuthHeaders = async () => {
-  const session = await supabase.auth.getSession();
-  if (!session.data.session) {
-    throw new Error('No active session');
-  }
-  return {
-    'Authorization': `Bearer ${session.data.session.access_token}`,
-    'Content-Type': 'application/json',
+const getHeaders = async (requiresAuth = false) => {
+  const baseHeaders = {
+    'Content-Type': 'application/json'
   };
+
+  if (requiresAuth) {
+    const session = await supabase.auth.getSession();
+    if (!session.data.session) {
+      throw new Error('Authentication required for this operation');
+    }
+    return {
+      ...baseHeaders,
+      'Authorization': `Bearer ${session.data.session.access_token}`,
+    };
+  }
+
+  return baseHeaders;
 };
 
 export const api = {
   // Vendors
   getVendors: async () => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders();
       const response = await fetch(`${API_URL}/vendors`, {
         headers: headers
       });
@@ -35,7 +43,7 @@ export const api = {
 
   createVendor: async (vendorData) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders(true);
       const response = await fetch(`${API_URL}/vendors`, {
         method: 'POST',
         headers: headers,
@@ -54,7 +62,7 @@ export const api = {
   // Software
   getSoftware: async () => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders();
       const response = await fetch(`${API_URL}/software`, {
         headers: headers
       });
@@ -72,7 +80,7 @@ export const api = {
 
   createSoftware: async (softwareData) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders(true);
       const response = await fetch(`${API_URL}/software`, {
         method: 'POST',
         headers: headers,
@@ -88,10 +96,81 @@ export const api = {
     }
   },
 
+  deleteSoftware: async (id) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/software/${id}`, {
+        method: 'DELETE',
+        headers: headers
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error deleting software:', error);
+      throw error;
+    }
+  },
+
+  // Patches
+  createPatch: async (patchData) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/patches`, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(patchData)
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Error creating patch:', error);
+      throw error;
+    }
+  },
+
+  deletePatch: async (id) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/patches/${id}`, {
+        method: 'DELETE',
+        headers: headers
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error deleting patch:', error);
+      throw error;
+    }
+  },
+
+  // Threats
+  deleteThreat: async (id) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/threats/${id}`, {
+        method: 'DELETE',
+        headers: headers
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error deleting threat:', error);
+      throw error;
+    }
+  },
+
   // Vulnerabilities
   getVulnerabilities: async () => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders();
       const response = await fetch(`${API_URL}/vulnerabilities`, {
         headers: headers
       });
@@ -109,7 +188,7 @@ export const api = {
 
   createVulnerability: async (vulnData) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders(true);
       const response = await fetch(`${API_URL}/vulnerabilities`, {
         method: 'POST',
         headers: headers,
@@ -125,9 +204,26 @@ export const api = {
     }
   },
 
+  deleteVulnerability: async (vulnId) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/vulnerabilities/${vulnId}`, {
+        method: 'DELETE',
+        headers: headers,
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error deleting vulnerability:', error);
+      throw error;
+    }
+  },
+
   linkVulnerabilityThreat: async (vulnId, threatId) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders(true);
       const response = await fetch(`${API_URL}/vulnerabilities/${vulnId}/threats`, {
         method: 'POST',
         headers: headers,
@@ -145,7 +241,7 @@ export const api = {
 
   linkVulnerabilityPatch: async (vulnId, patchId) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders(true);
       const response = await fetch(`${API_URL}/vulnerabilities/${vulnId}/patches`, {
         method: 'POST',
         headers: headers,
@@ -164,7 +260,7 @@ export const api = {
   // Threats
   getThreats: async () => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders();
       const response = await fetch(`${API_URL}/threats`, {
         headers: headers
       });
@@ -180,7 +276,7 @@ export const api = {
 
   getThreatTypes: async () => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders();
       const response = await fetch(`${API_URL}/threat-types`, {
         headers: headers
       });
@@ -196,7 +292,7 @@ export const api = {
 
   createThreat: async (threatData) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders(true);
       const response = await fetch(`${API_URL}/threats`, {
         method: 'POST',
         headers: headers,
@@ -212,10 +308,27 @@ export const api = {
     }
   },
 
+  deleteThreat: async (id) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/threats/${id}`, {
+        method: 'DELETE',
+        headers: headers
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error deleting threat:', error);
+      throw error;
+    }
+  },
+
   // Patches
   getPatches: async () => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders();
       const response = await fetch(`${API_URL}/patches`, {
         headers: headers
       });
@@ -231,7 +344,7 @@ export const api = {
 
   createPatch: async (patchData) => {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getHeaders(true);
       const response = await fetch(`${API_URL}/patches`, {
         method: 'POST',
         headers: headers,

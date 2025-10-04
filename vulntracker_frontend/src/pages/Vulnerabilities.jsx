@@ -1,51 +1,57 @@
-import React, { useState } from 'react';
-import { ChevronDown, Filter, ArrowLeft, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ChevronDown, Filter, ArrowLeft, ArrowRight, Plus, X } from 'lucide-react';
+import { api } from '../services/api';
 
 const Vulnerabilities = () => {
   const [selectedVuln, setSelectedVuln] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [vulnerabilitiesList, setVulnerabilitiesList] = useState([]);
+  const [newVulnerability, setNewVulnerability] = useState({
+    cve_id: '',
+    name: '',
+    description: '',
+    severity: 'low',
+    status: 'Active',
+    software_id: '',  // This will be filled from software list
+  });
+  const [softwareList, setSoftwareList] = useState([]);
 
-  const vulnerabilities = [
-    {
-      id: 'CVE-2023-4567',
-      name: 'Remote Code Execution in AcmeOS',
-      application: 'AcmeOS',
-      severity: 'critical',
-      discoveryDate: '2023-10-25',
-      lastUpdated: '2023-11-01',
-      status: 'Active',
-      description:
-        'A heap-based buffer overflow in the AcmeOS kernel allows a local attacker to escalate privileges or execute arbitrary code. The vulnerability lies within the handling of oversized network packets, which can lead to a write-what-where condition.',
-      impact:
-        'Successful exploitation could result in a full compromise of the affected system, including data theft, manipulation, and the ability to install malicious software. This vulnerability is highly severe as it provides a direct path to privilege escalation.',
-    },
-    {
-      id: 'CVE-2023-8901',
-      name: 'Cross-Site Scripting in SecureMail',
-      application: 'SecureMail',
-      severity: 'high',
-      discoveryDate: '2023-10-20',
-      lastUpdated: '2023-11-02',
-      status: 'Active',
-    },
-    {
-      id: 'CVE-2023-2345',
-      name: 'Information Disclosure in FileVault',
-      application: 'FileVault',
-      severity: 'medium',
-      discoveryDate: '2023-10-15',
-      lastUpdated: '2023-11-03',
-      status: 'Active',
-    },
-    {
-      id: 'CVE-2023-5678',
-      name: 'Denial of Service in WebServerX',
-      application: 'WebServerX',
-      severity: 'low',
-      discoveryDate: '2023-10-10',
-      lastUpdated: '2023-11-04',
-      status: 'Patched',
-    },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [vulns, software] = await Promise.all([
+          api.getVulnerabilities(),
+          api.getSoftware()
+        ]);
+        setVulnerabilitiesList(vulns);
+        setSoftwareList(software);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleCreateVulnerability = async (e) => {
+    e.preventDefault();
+    try {
+      await api.createVulnerability(newVulnerability);
+      const updatedVulns = await api.getVulnerabilities();
+      setVulnerabilitiesList(updatedVulns);
+      setShowAddForm(false);
+      setNewVulnerability({
+        cve_id: '',
+        name: '',
+        description: '',
+        severity: 'low',
+        status: 'Active',
+        software_id: '',
+      });
+    } catch (error) {
+      console.error('Error creating vulnerability:', error);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -54,11 +60,111 @@ const Vulnerabilities = () => {
         <h1 className="text-3xl font-display font-bold text-secondary-900">
           Vulnerabilities
         </h1>
-        <button className="btn-secondary inline-flex items-center">
-          <Filter className="w-4 h-4 mr-2" />
-          Filter
-        </button>
+        <div className="flex gap-2">
+          <button 
+            className="btn-primary inline-flex items-center"
+            onClick={() => setShowAddForm(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Vulnerability
+          </button>
+          <button className="btn-secondary inline-flex items-center">
+            <Filter className="w-4 h-4 mr-2" />
+            Filter
+          </button>
+        </div>
       </div>
+      
+      {/* Add Vulnerability Form */}
+      {showAddForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-display font-bold">Add New Vulnerability</h2>
+              <button onClick={() => setShowAddForm(false)} className="text-secondary-500 hover:text-secondary-700">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateVulnerability} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">CVE ID</label>
+                  <input
+                    type="text"
+                    className="input mt-1 w-full"
+                    placeholder="CVE-YYYY-NNNN"
+                    value={newVulnerability.cve_id}
+                    onChange={(e) => setNewVulnerability({...newVulnerability, cve_id: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Name</label>
+                  <input
+                    type="text"
+                    className="input mt-1 w-full"
+                    placeholder="Vulnerability Name"
+                    value={newVulnerability.name}
+                    onChange={(e) => setNewVulnerability({...newVulnerability, name: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Software</label>
+                  <select
+                    className="input mt-1 w-full"
+                    value={newVulnerability.software_id}
+                    onChange={(e) => setNewVulnerability({...newVulnerability, software_id: e.target.value})}
+                    required
+                  >
+                    <option value="">Select Software</option>
+                    {softwareList.map((sw) => (
+                      <option key={sw.id} value={sw.id}>{sw.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Severity</label>
+                  <select
+                    className="input mt-1 w-full"
+                    value={newVulnerability.severity}
+                    onChange={(e) => setNewVulnerability({...newVulnerability, severity: e.target.value})}
+                    required
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-700">Description</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="4"
+                  placeholder="Detailed description of the vulnerability"
+                  value={newVulnerability.description}
+                  onChange={(e) => setNewVulnerability({...newVulnerability, description: e.target.value})}
+                  required
+                ></textarea>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowAddForm(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Create Vulnerability
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Data Table */}
       <div className="card overflow-hidden">
@@ -76,7 +182,7 @@ const Vulnerabilities = () => {
               </tr>
             </thead>
             <tbody>
-              {vulnerabilities.map((vuln) => (
+              {vulnerabilitiesList.map((vuln) => (
                 <tr
                   key={vuln.id}
                   onClick={() => setSelectedVuln(vuln)}
@@ -120,7 +226,7 @@ const Vulnerabilities = () => {
               <option>50 per page</option>
             </select>
             <span className="text-sm text-secondary-600">
-              Showing 1-4 of 4 results
+              Showing {vulnerabilitiesList.length} results
             </span>
           </div>
           <div className="flex items-center gap-2">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Filter, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ChevronDown, Filter, ArrowLeft, ArrowRight, Plus, X } from 'lucide-react';
 import { api } from '../services/api';
 
 const Vulnerabilities = () => {
@@ -7,15 +7,30 @@ const Vulnerabilities = () => {
   const [selectedVuln, setSelectedVuln] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [softwareList, setSoftwareList] = useState([]);
+  const [newVulnerability, setNewVulnerability] = useState({
+    cve_id: '',
+    name: '',
+    summary: '',
+    severity: 'Low',
+    status: 'Active',
+    software_id: '',
+    cvss_score: '',
+  });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const vulnsData = await api.getVulnerabilities();
+        const [vulnsData, software] = await Promise.all([
+          api.getVulnerabilities(),
+          api.getSoftware()
+        ]);
         setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
+        setSoftwareList(Array.isArray(software) ? software : []);
       } catch (err) {
-        setError('Failed to fetch vulnerabilities');
+        setError('Failed to fetch data');
         console.error('Error:', err);
       } finally {
         setIsLoading(false);
@@ -24,6 +39,42 @@ const Vulnerabilities = () => {
 
     fetchData();
   }, []);
+
+  const handleCreateVulnerability = async (e) => {
+    e.preventDefault();
+    try {
+      await api.createVulnerability(newVulnerability);
+      const vulnsData = await api.getVulnerabilities();
+      setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
+      setShowAddForm(false);
+      setNewVulnerability({
+        cve_id: '',
+        name: '',
+        summary: '',
+        severity: 'Low',
+        status: 'Active',
+        software_id: '',
+        cvss_score: '',
+      });
+    } catch (error) {
+      console.error('Error creating vulnerability:', error);
+    }
+  };
+
+  const handleDeleteVulnerability = async (vulnId) => {
+    if (!window.confirm('Are you sure you want to delete this vulnerability?')) {
+      return;
+    }
+
+    try {
+      await api.deleteVulnerability(vulnId);
+      const vulnsData = await api.getVulnerabilities();
+      setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
+      setSelectedVuln(null); // Clear selected vulnerability if it was deleted
+    } catch (error) {
+      console.error('Error deleting vulnerability:', error);
+    }
+  };
 
   const getSeverityClass = (severity) => {
     const classes = {
@@ -60,11 +111,130 @@ const Vulnerabilities = () => {
         <h1 className="text-3xl font-display font-bold text-secondary-900">
           Vulnerabilities
         </h1>
-        <button className="btn-secondary inline-flex items-center">
-          <Filter className="w-4 h-4 mr-2" />
-          Filter
-        </button>
+        <div className="flex gap-2">
+          <button 
+            className="btn-primary inline-flex items-center"
+            onClick={() => setShowAddForm(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Vulnerability
+          </button>
+          <button className="btn-secondary inline-flex items-center">
+            <Filter className="w-4 h-4 mr-2" />
+            Filter
+          </button>
+        </div>
       </div>
+
+      {/* Add Vulnerability Form */}
+      {showAddForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-display font-bold">Add New Vulnerability</h2>
+              <button onClick={() => setShowAddForm(false)} className="text-secondary-500 hover:text-secondary-700">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateVulnerability} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">CVE ID</label>
+                  <input
+                    type="text"
+                    className="input mt-1 w-full"
+                    placeholder="CVE-YYYY-NNNN"
+                    value={newVulnerability.cve_id}
+                    onChange={(e) => setNewVulnerability({...newVulnerability, cve_id: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Software</label>
+                  <select
+                    className="input mt-1 w-full"
+                    value={newVulnerability.software_id}
+                    onChange={(e) => setNewVulnerability({...newVulnerability, software_id: e.target.value})}
+                    required
+                  >
+                    <option value="">Select Software</option>
+                    {softwareList.map((sw) => (
+                      <option key={sw.id} value={sw.id}>{sw.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Name</label>
+                  <input
+                    type="text"
+                    className="input mt-1 w-full"
+                    placeholder="Vulnerability Name"
+                    value={newVulnerability.name}
+                    onChange={(e) => setNewVulnerability({...newVulnerability, name: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">CVSS Score</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
+                    className="input mt-1 w-full"
+                    placeholder="0.0 - 10.0"
+                    value={newVulnerability.cvss_score}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value);
+                      if (!isNaN(value) && value >= 0 && value <= 10) {
+                        setNewVulnerability({...newVulnerability, cvss_score: value});
+                      }
+                    }}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Severity</label>
+                  <select
+                    className="input mt-1 w-full"
+                    value={newVulnerability.severity}
+                    onChange={(e) => setNewVulnerability({...newVulnerability, severity: e.target.value})}
+                    required
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-700">Summary</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="3"
+                  placeholder="Summary of the vulnerability"
+                  value={newVulnerability.summary}
+                  onChange={(e) => setNewVulnerability({...newVulnerability, summary: e.target.value})}
+                  required
+                ></textarea>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowAddForm(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Create Vulnerability
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Data Table */}
       <div className="card overflow-hidden">
@@ -237,7 +407,13 @@ const Vulnerabilities = () => {
             </div>
           )}
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <button 
+              onClick={() => handleDeleteVulnerability(selectedVuln.id)} 
+              className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100"
+            >
+              Delete Vulnerability
+            </button>
             <button className="btn-primary">Report an Issue</button>
           </div>
         </div>

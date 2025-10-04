@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Plus, Filter, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
+import { supabase } from '../services/supabase';
 
 const Software = () => {
   const [software, setSoftware] = useState([]);
@@ -9,6 +10,7 @@ const Software = () => {
   const [error, setError] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [vendors, setVendors] = useState([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [newSoftware, setNewSoftware] = useState({
     name: '',
     vendor_id: '',
@@ -35,6 +37,20 @@ const Software = () => {
     };
 
     fetchData();
+
+    // Check authentication status
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      setIsAuthenticated(!!data.session);
+    };
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   const handleCreateSoftware = async (e) => {
@@ -50,6 +66,29 @@ const Software = () => {
       });
     } catch (err) {
       console.error('Error creating software:', err);
+    }
+  };
+
+  const handleDeleteSoftware = async (e, id) => {
+    e.stopPropagation(); // Prevent row click event
+    if (!window.confirm('Are you sure you want to delete this software? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await api.deleteSoftware(id);
+      setSoftware(software.filter(item => item.id !== id));
+      if (selectedSoftware?.id === id) {
+        setSelectedSoftware(null);
+      }
+    } catch (error) {
+      console.error('Error deleting software:', error);
+      // Check if error is about existing vulnerabilities
+      if (error.message.includes('Cannot delete software that has vulnerabilities')) {
+        alert('Cannot delete software that has vulnerabilities. Delete the vulnerabilities first.');
+      } else {
+        alert('Error deleting software. Please try again.');
+      }
     }
   };
 
@@ -83,13 +122,14 @@ const Software = () => {
             <Filter className="w-4 h-4 mr-2" />
             Filter
           </button>
-          <button 
-            className="btn-primary inline-flex items-center"
-            onClick={() => setShowCreateForm(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Software
-          </button>
+          {isAuthenticated && (
+            <button 
+              onClick={() => setShowCreateForm(true)}
+              className="btn-primary inline-flex items-center"
+            >
+              <Plus className="w-4 h-4 mr-2" /> Add Software
+            </button>
+          )}
         </div>
       </div>
 
@@ -259,7 +299,16 @@ const Software = () => {
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-3">
+            {isAuthenticated && (
+              <button
+                onClick={(e) => handleDeleteSoftware(e, selectedSoftware.id)}
+                className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                title="Delete software"
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Software
+              </button>
+            )}
             <button className="btn-primary">Edit Software</button>
           </div>
         </div>

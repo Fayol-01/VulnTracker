@@ -8,6 +8,7 @@ import Vulnerabilities from './pages/Vulnerabilities_new';
 import Threats from './pages/Threats';
 import Patches from './pages/Patches';
 import Software from './pages/Software';
+import About from './pages/About';
 import Login from './pages/Login';
 import SignUp from './pages/SignUp';
 import Placeholder from './components/Placeholder';
@@ -41,26 +42,11 @@ const AppRoutes = () => {
                             <Dashboard />
                         </ProtectedRoute>
                     } />
-                    <Route path="/vulnerabilities" element={
-                        <ProtectedRoute>
-                            <Vulnerabilities />
-                        </ProtectedRoute>
-                    } />
-                    <Route path="/threats" element={
-                        <ProtectedRoute>
-                            <Threats />
-                        </ProtectedRoute>
-                    } />
-                    <Route path="/patches" element={
-                        <ProtectedRoute>
-                            <Patches />
-                        </ProtectedRoute>
-                    } />
-                    <Route path="/software" element={
-                        <ProtectedRoute>
-                            <Software />
-                        </ProtectedRoute>
-                    } />
+                    <Route path="/vulnerabilities" element={<Vulnerabilities />} />
+                    <Route path="/threats" element={<Threats />} />
+                    <Route path="/patches" element={<Patches />} />
+                    <Route path="/software" element={<Software />} />
+                    <Route path="/about" element={<About />} />
                 </Routes>
             </main>
             <Footer />
