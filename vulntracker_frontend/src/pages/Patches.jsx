@@ -18,6 +18,8 @@ const Patches = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [vulnerabilities, setVulnerabilities] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [newPatch, setNewPatch] = useState({
     vulnerability_id: '',
     url: '',
@@ -99,6 +101,25 @@ const Patches = () => {
       <div className="bg-red-50 text-red-500 p-4 rounded-lg">{error}</div>
     </div>
   );
+
+  // Calculate pagination values
+  const totalItems = patches.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentPatches = patches.slice(startIndex, endIndex);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handleItemsPerPageChange = (e) => {
+    const newItemsPerPage = parseInt(e.target.value);
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
 
   return (
     <div className="space-y-6">
@@ -201,7 +222,7 @@ const Patches = () => {
                 </tr>
               </thead>
               <tbody>
-                {patches.map((patch) => {
+                {currentPatches.map((patch) => {
                   const vuln = patch.vulnerability;
                   const software = vuln?.software;
                   return (
@@ -228,6 +249,60 @@ const Patches = () => {
                 })}
               </tbody>
             </table>
+          </div>
+          
+          {/* Pagination */}
+          <div className="flex items-center justify-between border-t border-secondary-200 px-6 py-3">
+            <div className="flex items-center gap-2">
+              <select 
+                className="input py-1 pl-3 pr-8"
+                value={itemsPerPage}
+                onChange={handleItemsPerPageChange}
+              >
+                <option value={10}>10 per page</option>
+                <option value={25}>25 per page</option>
+                <option value={50}>50 per page</option>
+              </select>
+              <span className="text-sm text-secondary-600">
+                Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} results
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(page => {
+                  // Show first page, last page, current page, and pages around current page
+                  const nearCurrent = Math.abs(page - currentPage) <= 1;
+                  return page === 1 || page === totalPages || nearCurrent;
+                })
+                .map((page, index, array) => (
+                  <React.Fragment key={page}>
+                    {index > 0 && array[index - 1] !== page - 1 && (
+                      <span className="text-secondary-400">...</span>
+                    )}
+                    <button 
+                      className={`btn-secondary py-1 px-3 ${currentPage === page ? 'bg-primary-100 text-primary-700' : ''}`}
+                      onClick={() => handlePageChange(page)}
+                    >
+                      {page}
+                    </button>
+                  </React.Fragment>
+                ))
+              }
+              <button 
+                className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}

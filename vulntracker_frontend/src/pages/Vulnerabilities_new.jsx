@@ -9,6 +9,9 @@ const Vulnerabilities = () => {
   const [error, setError] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [softwareList, setSoftwareList] = useState([]);
+  const [threatList, setThreatList] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [newVulnerability, setNewVulnerability] = useState({
     cve_id: '',
     name: '',
@@ -17,18 +20,21 @@ const Vulnerabilities = () => {
     status: 'Active',
     software_id: '',
     cvss_score: '',
+    threats: [], // Array of threat IDs
   });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const [vulnsData, software] = await Promise.all([
+        const [vulnsData, software, threats] = await Promise.all([
           api.getVulnerabilities(),
-          api.getSoftware()
+          api.getSoftware(),
+          api.getThreats()
         ]);
         setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
         setSoftwareList(Array.isArray(software) ? software : []);
+        setThreatList(Array.isArray(threats) ? threats : []);
       } catch (err) {
         setError('Failed to fetch data');
         console.error('Error:', err);
@@ -43,9 +49,22 @@ const Vulnerabilities = () => {
   const handleCreateVulnerability = async (e) => {
     e.preventDefault();
     try {
-      await api.createVulnerability(newVulnerability);
+      // Create vulnerability first
+      const { threats, ...vulnData } = newVulnerability;
+      const createdVuln = await api.createVulnerability(vulnData);
+      
+      // Link selected threats
+      await Promise.all(
+        threats.map(threatId => 
+          api.linkVulnerabilityThreat(createdVuln.id, threatId)
+        )
+      );
+
+      // Refresh vulnerabilities list
       const vulnsData = await api.getVulnerabilities();
       setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
+      
+      // Reset form
       setShowAddForm(false);
       setNewVulnerability({
         cve_id: '',
@@ -55,6 +74,7 @@ const Vulnerabilities = () => {
         status: 'Active',
         software_id: '',
         cvss_score: '',
+        threats: [],
       });
     } catch (error) {
       console.error('Error creating vulnerability:', error);
@@ -103,6 +123,25 @@ const Vulnerabilities = () => {
       </div>
     );
   }
+
+  // Calculate pagination values
+  const totalItems = vulnerabilities.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentVulnerabilities = vulnerabilities.slice(startIndex, endIndex);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handleItemsPerPageChange = (e) => {
+    const newItemsPerPage = parseInt(e.target.value);
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
 
   return (
     <div className="space-y-6">
@@ -219,6 +258,33 @@ const Vulnerabilities = () => {
                   required
                 ></textarea>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-700">Associated Threats</label>
+                <div className="mt-2 space-y-2">
+                  {threatList.map((threat) => (
+                    <div key={threat.id} className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`threat-${threat.id}`}
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                        checked={newVulnerability.threats.includes(threat.id)}
+                        onChange={(e) => {
+                          const threats = e.target.checked 
+                            ? [...newVulnerability.threats, threat.id]
+                            : newVulnerability.threats.filter(id => id !== threat.id);
+                          setNewVulnerability({...newVulnerability, threats});
+                        }}
+                      />
+                      <label htmlFor={`threat-${threat.id}`} className="ml-3">
+                        <span className="block text-sm font-medium text-secondary-900">{threat.name}</span>
+                        {threat.threat_type && (
+                          <span className="text-xs text-secondary-500">{threat.threat_type.name}</span>
+                        )}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
@@ -251,7 +317,7 @@ const Vulnerabilities = () => {
               </tr>
             </thead>
             <tbody>
-              {vulnerabilities.map((vuln) => (
+              {currentVulnerabilities.map((vuln) => (
                 <tr
                   key={vuln.id}
                   onClick={() => setSelectedVuln(vuln)}
@@ -285,21 +351,52 @@ const Vulnerabilities = () => {
         {/* Pagination */}
         <div className="flex items-center justify-between border-t border-secondary-200 px-6 py-3">
           <div className="flex items-center gap-2">
-            <select className="input py-1 pl-3 pr-8">
-              <option>10 per page</option>
-              <option>25 per page</option>
-              <option>50 per page</option>
+            <select 
+              className="input py-1 pl-3 pr-8"
+              value={itemsPerPage}
+              onChange={handleItemsPerPageChange}
+            >
+              <option value={10}>10 per page</option>
+              <option value={25}>25 per page</option>
+              <option value={50}>50 per page</option>
             </select>
             <span className="text-sm text-secondary-600">
-              Showing 1-{vulnerabilities.length} of {vulnerabilities.length} results
+              Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} results
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button className="btn-secondary py-1 px-3">
+            <button 
+              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <button className="btn-secondary py-1 px-3">1</button>
-            <button className="btn-secondary py-1 px-3">
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(page => {
+                // Show first page, last page, current page, and pages around current page
+                const nearCurrent = Math.abs(page - currentPage) <= 1;
+                return page === 1 || page === totalPages || nearCurrent;
+              })
+              .map((page, index, array) => (
+                <React.Fragment key={page}>
+                  {index > 0 && array[index - 1] !== page - 1 && (
+                    <span className="text-secondary-400">...</span>
+                  )}
+                  <button 
+                    className={`btn-secondary py-1 px-3 ${currentPage === page ? 'bg-primary-100 text-primary-700' : ''}`}
+                    onClick={() => handlePageChange(page)}
+                  >
+                    {page}
+                  </button>
+                </React.Fragment>
+              ))
+            }
+            <button 
+              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

@@ -346,15 +346,22 @@ def handle_vulnerabilities():
             return jsonify({"error": str(e)}), 500
 
 @app.route("/api/vulnerabilities/<int:vuln_id>", methods=['DELETE'])
-@jwt_required()
 def delete_vulnerability(vuln_id):
     try:
+        # Check for linked threats first
+        threat_links = supabase.table("vulnerability_threats").select("*").eq("vulnerability_id", vuln_id).execute()
+        if threat_links.data:
+            # Delete all threat links first
+            supabase.table("vulnerability_threats").delete().eq("vulnerability_id", vuln_id).execute()
+        
+        # Now delete the vulnerability
         response = supabase.table("vulnerabilities").delete().eq("id", vuln_id).execute()
         if not response.data:
             return jsonify({"error": "Vulnerability not found"}), 404
+            
         return jsonify({"message": "Vulnerability deleted successfully"}), 200
     except Exception as e:
-        print(f"Error deleting vulnerability: {str(e)}")
+        logger.error("vulnerability_delete_error", error=str(e))
         return jsonify({"error": str(e)}), 500
     
 @app.route("/api/threats/<int:vuln_id>", methods=['DELETE'])
