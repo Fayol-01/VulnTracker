@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Shield,
   AlertTriangle,
@@ -11,6 +12,7 @@ import {
 
 const Home = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const stats = [
     {
@@ -77,14 +79,39 @@ const Home = () => {
             entire application ecosystem in one unified platform.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={() => navigate('/vulnerabilities')}
-              className="btn-primary w-full sm:w-auto"
-            >
-              Explore Vulnerabilities
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </button>
-            <button className="btn-secondary w-full sm:w-auto">View Documentation</button>
+            {isAuthenticated ? (
+              <>
+                <button
+                  onClick={() => navigate('/vulnerabilities')}
+                  className="btn-primary w-full sm:w-auto"
+                >
+                  Explore Vulnerabilities
+                  <ArrowRight className="w-5 h-5 ml-2" />
+                </button>
+                <button 
+                  onClick={() => navigate('/software')}
+                  className="btn-secondary w-full sm:w-auto"
+                >
+                  View Software
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => navigate('/login')}
+                  className="btn-primary w-full sm:w-auto"
+                >
+                  Sign In to Access
+                  <ArrowRight className="w-5 h-5 ml-2" />
+                </button>
+                <button
+                  onClick={() => navigate('/signup')}
+                  className="btn-secondary w-full sm:w-auto"
+                >
+                  Create Account
+                </button>
+              </>
+            )}
           </div>
         </div>
       </section>

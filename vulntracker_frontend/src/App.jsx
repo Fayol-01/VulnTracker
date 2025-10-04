@@ -42,10 +42,26 @@ const AppRoutes = () => {
                             <Dashboard />
                         </ProtectedRoute>
                     } />
-                    <Route path="/vulnerabilities" element={<Vulnerabilities />} />
-                    <Route path="/threats" element={<Threats />} />
-                    <Route path="/patches" element={<Patches />} />
-                    <Route path="/software" element={<Software />} />
+                    <Route path="/vulnerabilities" element={
+                        <ProtectedRoute>
+                            <Vulnerabilities />
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/threats" element={
+                        <ProtectedRoute>
+                            <Threats />
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/patches" element={
+                        <ProtectedRoute>
+                            <Patches />
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/software" element={
+                        <ProtectedRoute>
+                            <Software />
+                        </ProtectedRoute>
+                    } />
                     <Route path="/about" element={<About />} />
                 </Routes>
             </main>

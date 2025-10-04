@@ -49,7 +49,7 @@ jwt = JWTManager(app)
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per hour"]
+    default_limits=["2000 per day", "500 per hour"]
 )
 
 CORS(app, resources={
@@ -387,10 +387,10 @@ def delete_software(vuln_id):
     try:
         response = supabase.table("software").delete().eq("id", vuln_id).execute()
         if not response.data:
-            return jsonify({"error": "Vulnerability not found"}), 404
-        return jsonify({"message": "Vulnerability deleted successfully"}), 200
+            return jsonify({"error": "Software not found"}), 404
+        return jsonify({"message": "Software deleted successfully"}), 200
     except Exception as e:
-        print(f"Error deleting vulnerability: {str(e)}")
+        print(f"Error deleting software: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/threats", methods=['GET', 'POST'])

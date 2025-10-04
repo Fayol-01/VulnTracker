@@ -32,20 +32,20 @@ const Header = () => {
     setIsAccountDropdownOpen(false);
   };
 
-  const navigation = [
+  const publicNavigation = isAuthenticated ? [] : [
     { name: 'Home', path: '/' },
+    { name: 'About', path: '/about' },
+  ];
+
+  const protectedNavigation = [
+    { name: 'Dashboard', path: '/dashboard' },
     { name: 'Vulnerabilities', path: '/vulnerabilities' },
     { name: 'Threats', path: '/threats' },
     { name: 'Patches', path: '/patches' },
     { name: 'Software', path: '/software' },
-    { name: 'About', path: '/about' },
   ];
-
-  // Dashboard is only shown to authenticated users
-  const authenticatedNavigation = isAuthenticated ? [
-    { name: 'Dashboard', path: '/dashboard' },
-    ...navigation
-  ] : navigation;
+  
+  const navigation = [...publicNavigation, ...(isAuthenticated ? protectedNavigation : [])];
 
   return (
     <header className="bg-white shadow-sm">
@@ -61,7 +61,7 @@ const Header = () => {
 
           {/* Desktop navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            {authenticatedNavigation.map((item) => (
+            {navigation.map((item) => (
               <Link
                 key={item.name}
                 to={item.path}
