@@ -92,16 +92,30 @@ const Vulnerabilities = () => {
   const handleCreateVulnerability = async (e) => {
     e.preventDefault();
     try {
+      // Validate required fields based on schema
+      if (!newVulnerability.cve_id || !newVulnerability.software_id) {
+        throw new Error('CVE ID and Software are required fields');
+      }
+
+      // Format data according to schema
+      const { threats, status, name, ...vulnData } = newVulnerability;
+      const formattedVulnData = {
+        ...vulnData,
+        cvss_score: vulnData.cvss_score ? parseFloat(vulnData.cvss_score) : null,
+        published: new Date().toISOString()
+      };
+
       // Create vulnerability first
-      const { threats, ...vulnData } = newVulnerability;
-      const createdVuln = await api.createVulnerability(vulnData);
+      const createdVuln = await api.createVulnerability(formattedVulnData);
       
-      // Link selected threats
-      await Promise.all(
-        threats.map(threatId => 
-          api.linkVulnerabilityThreat(createdVuln.id, threatId)
-        )
-      );
+      // Link selected threats if any
+      if (threats && threats.length > 0) {
+        await Promise.all(
+          threats.map(threatId => 
+            api.linkVulnerabilityThreat(createdVuln.id, threatId)
+          )
+        );
+      }
 
       // Refresh vulnerabilities list
       const vulnsData = await api.getVulnerabilities();
@@ -119,8 +133,12 @@ const Vulnerabilities = () => {
         cvss_score: '',
         threats: [],
       });
+      
+      // Show success message
+      setError(null);
     } catch (error) {
       console.error('Error creating vulnerability:', error);
+      setError(error.message || 'Failed to create vulnerability');
     }
   };
 
