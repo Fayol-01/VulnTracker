@@ -16,7 +16,8 @@ const Software = () => {
   const [newSoftware, setNewSoftware] = useState({
     name: '',
     vendor_id: '',
-    version: ''
+    version: '',
+    description: '',
   });
 
   useEffect(() => {
@@ -64,7 +65,8 @@ const Software = () => {
       setNewSoftware({
         name: '',
         vendor_id: '',
-        version: ''
+        version: '',
+        description: '',
       });
     } catch (err) {
       console.error('Error creating software:', err);
@@ -203,6 +205,17 @@ const Software = () => {
                 className="input mt-1"
                 placeholder="e.g., 1.0.0"
               />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-secondary-700">Description</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="3"
+                  placeholder="Description of the software"
+                  value={newSoftware.description}
+                  onChange={(e) => setNewSoftware({...newSoftware, description: e.target.value})}
+                  required
+                ></textarea>
             </div>
             <div className="flex justify-end gap-3">
               <button
@@ -348,6 +361,13 @@ const Software = () => {
               <span className="mt-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                 Active
               </span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm text-secondary-600 mb-1">
+                {selectedSoftware.description}
+              </h2>
             </div>
           </div>
 

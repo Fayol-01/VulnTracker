@@ -29,7 +29,9 @@ const Vulnerabilities = () => {
     status: 'Active',
     software_id: '',
     cvss_score: '',
-    threats: [], // Array of threat IDs
+    threats: [],
+    description: '',
+    // Array of threat IDs
   });
 
   const applyFilters = (currentFilters) => {
@@ -92,30 +94,16 @@ const Vulnerabilities = () => {
   const handleCreateVulnerability = async (e) => {
     e.preventDefault();
     try {
-      // Validate required fields based on schema
-      if (!newVulnerability.cve_id || !newVulnerability.software_id) {
-        throw new Error('CVE ID and Software are required fields');
-      }
-
-      // Format data according to schema
-      const { threats, status, name, ...vulnData } = newVulnerability;
-      const formattedVulnData = {
-        ...vulnData,
-        cvss_score: vulnData.cvss_score ? parseFloat(vulnData.cvss_score) : null,
-        published: new Date().toISOString()
-      };
-
       // Create vulnerability first
-      const createdVuln = await api.createVulnerability(formattedVulnData);
+      const { threats, ...vulnData } = newVulnerability;
+      const createdVuln = await api.createVulnerability(vulnData);
       
-      // Link selected threats if any
-      if (threats && threats.length > 0) {
-        await Promise.all(
-          threats.map(threatId => 
-            api.linkVulnerabilityThreat(createdVuln.id, threatId)
-          )
-        );
-      }
+      // Link selected threats
+      await Promise.all(
+        threats.map(threatId => 
+          api.linkVulnerabilityThreat(createdVuln.id, threatId)
+        )
+      );
 
       // Refresh vulnerabilities list
       const vulnsData = await api.getVulnerabilities();
@@ -132,13 +120,10 @@ const Vulnerabilities = () => {
         software_id: '',
         cvss_score: '',
         threats: [],
+        description: '',
       });
-      
-      // Show success message
-      setError(null);
     } catch (error) {
       console.error('Error creating vulnerability:', error);
-      setError(error.message || 'Failed to create vulnerability');
     }
   };
 
@@ -357,6 +342,17 @@ const Vulnerabilities = () => {
                 ></textarea>
               </div>
               <div>
+                <label className="block text-sm font-medium text-secondary-700">Description</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="3"
+                  placeholder="Description of the vulnerability"
+                  value={newVulnerability.description}
+                  onChange={(e) => setNewVulnerability({...newVulnerability, description: e.target.value})}
+                  required
+                ></textarea>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-secondary-700">Associated Threats</label>
                 <div className="mt-2 space-y-2">
                   {threatList.map((threat) => (
@@ -551,6 +547,13 @@ const Vulnerabilities = () => {
               <div className="font-medium">
                 {new Date(selectedVuln.published).toLocaleDateString()}
               </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm text-secondary-600 mb-1">
+                {selectedVuln.description}
+              </h2>
             </div>
           </div>
 

@@ -329,7 +329,8 @@ def handle_vulnerabilities():
                 "summary": data.get('summary'),
                 "severity": data.get('severity'),
                 "cvss_score": data.get('cvss_score'),
-                "published": datetime.now(timezone.utc).isoformat()
+                "published": datetime.now(timezone.utc).isoformat(),
+                "description": data.get('description', '')
             }
             
             response = supabase.table("vulnerabilities").insert(vulnerability_data).execute()
@@ -551,6 +552,7 @@ def handle_patches():
                     "id": patch["id"],
                     "url": patch.get("url"),
                     "released": patch.get("released"),
+                    "description": patch.get("description"),
                     "vulnerability": {
                         "id": vuln.get("id") if vuln else None,
                         "cve_id": vuln.get("cve_id") if vuln else None,
@@ -584,7 +586,8 @@ def handle_patches():
             response = supabase.table('patches').insert({
                 "vulnerability_id": data['vulnerability_id'],
                 "url": data['url'],
-                "released": data.get('released')
+                "released": data.get('released'),
+                "description": data.get('description'),
             }).execute()
 
             patch = response.data[0]

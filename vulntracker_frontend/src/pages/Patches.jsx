@@ -23,7 +23,8 @@ const Patches = () => {
   const [newPatch, setNewPatch] = useState({
     vulnerability_id: '',
     url: '',
-    released: new Date().toISOString().split('T')[0]
+    released: new Date().toISOString().split('T')[0],
+    description: '',
   });
   const [createError, setCreateError] = useState('');
 
@@ -64,7 +65,8 @@ const Patches = () => {
       setNewPatch({
         vulnerability_id: '',
         url: '',
-        released: new Date().toISOString().split('T')[0]
+        released: new Date().toISOString().split('T')[0],
+        description: '', 
       });
     } catch (err) {
       console.error('Error creating patch:', err);
@@ -180,6 +182,17 @@ const Patches = () => {
                 className="input mt-1"
                 required
               />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-secondary-700">Description</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="3"
+                  placeholder="Description of the patch"
+                  value={newPatch.description}
+                  onChange={(e) => setNewPatch({...newPatch, description: e.target.value})}
+                  required
+                ></textarea>
             </div>
             {createError && (
               <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
@@ -330,6 +343,13 @@ const Patches = () => {
               <a href={selectedPatch.url} target="_blank" rel="noopener noreferrer" className="btn-primary inline-flex items-center">
                 Download Patch <ExternalLink className="w-4 h-4 ml-2" />
               </a>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm text-secondary-600 mb-1">
+                {selectedPatch.description}
+              </h2>
             </div>
           </div>
           {selectedPatch.vulnerability && (
