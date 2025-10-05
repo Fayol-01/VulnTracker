@@ -27,6 +27,13 @@ const Patches = () => {
     description: '',
   });
   const [createError, setCreateError] = useState('');
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingPatch, setEditingPatch] = useState({
+    vulnerability_id: '',
+    url: '',
+    released: '',
+    description: '',
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -89,6 +96,28 @@ const Patches = () => {
     } catch (error) {
       console.error('Error deleting patch:', error);
       alert('Error deleting patch. Please try again.');
+    }
+  };
+
+  const handleEditPatch = async () => {
+    try {
+      const response = await api.updatePatch(selectedPatch.id, editingPatch);
+      setPatches(patches.map(patch => 
+        patch.id === selectedPatch.id 
+          ? { ...response, vulnerability: vulnerabilities.find(v => v.id === response.vulnerability_id) } 
+          : patch
+      ));
+      setSelectedPatch({ ...response, vulnerability: vulnerabilities.find(v => v.id === response.vulnerability_id) });
+      setShowEditForm(false);
+      setEditingPatch({
+        vulnerability_id: '',
+        url: '',
+        released: '',
+        description: '',
+      });
+    } catch (err) {
+      console.error('Error updating patch:', err);
+      alert('Failed to update patch. Please try again.');
     }
   };
 
@@ -321,7 +350,7 @@ const Patches = () => {
       )}
 
       {/* Patch Details */}
-      {selectedPatch && (
+      {selectedPatch && !showEditForm && (
         <div className="card p-6 space-y-6">
           <div className="flex items-center justify-between">
             <div>
@@ -332,13 +361,30 @@ const Patches = () => {
             </div>
             <div className="flex gap-3">
               {isAuthenticated && (
-                <button
-                  onClick={(e) => handleDeletePatch(e, selectedPatch.id)}
-                  className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
-                  title="Delete patch"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete Patch
-                </button>
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingPatch({
+                        vulnerability_id: selectedPatch.vulnerability_id,
+                        url: selectedPatch.url,
+                        released: selectedPatch.released.split('T')[0],
+                        description: selectedPatch.description || '',
+                      });
+                      setShowEditForm(true);
+                    }}
+                    className="btn-primary inline-flex items-center"
+                  >
+                    Edit Patch
+                  </button>
+                  <button
+                    onClick={(e) => handleDeletePatch(e, selectedPatch.id)}
+                    className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                    title="Delete patch"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete Patch
+                  </button>
+                </>
               )}
               <a href={selectedPatch.url} target="_blank" rel="noopener noreferrer" className="btn-primary inline-flex items-center">
                 Download Patch <ExternalLink className="w-4 h-4 ml-2" />
@@ -367,6 +413,86 @@ const Patches = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Form */}
+      {showEditForm && selectedPatch && (
+        <div className="card p-6">
+          <h2 className="text-xl font-display font-semibold mb-4">Edit Patch</h2>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            handleEditPatch();
+          }} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-secondary-700">Vulnerability</label>
+              <select
+                value={editingPatch.vulnerability_id}
+                onChange={(e) => setEditingPatch({ ...editingPatch, vulnerability_id: e.target.value })}
+                className="input mt-1"
+                required
+              >
+                <option value="">Select a vulnerability...</option>
+                {vulnerabilities.map((vuln) => (
+                  <option key={vuln.id} value={vuln.id}>
+                    {vuln.cve_id} - {vuln.summary}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-secondary-700">Patch URL</label>
+              <input
+                type="url"
+                value={editingPatch.url}
+                onChange={(e) => setEditingPatch({ ...editingPatch, url: e.target.value })}
+                className="input mt-1"
+                required
+                placeholder={selectedPatch.url || "https://"}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-secondary-700">Release Date</label>
+              <input
+                type="date"
+                value={editingPatch.released}
+                onChange={(e) => setEditingPatch({ ...editingPatch, released: e.target.value })}
+                className="input mt-1"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-secondary-700">Description</label>
+              <textarea
+                className="input mt-1 w-full"
+                rows="3"
+                placeholder={selectedPatch.description || "Description of the patch"}
+                value={editingPatch.description}
+                onChange={(e) => setEditingPatch({...editingPatch, description: e.target.value})}
+                required
+              ></textarea>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditForm(false);
+                  setEditingPatch({
+                    vulnerability_id: '',
+                    url: '',
+                    released: '',
+                    description: '',
+                  });
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary">
+                Save Changes
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

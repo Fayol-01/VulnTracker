@@ -18,6 +18,12 @@ const Threats = () => {
     description: '',
     threat_type_id: ''
   });
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingThreat, setEditingThreat] = useState({
+    name: '',
+    description: '',
+    threat_type_id: ''
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -145,6 +151,47 @@ const Threats = () => {
         </div>
       )}
 
+      {/* Edit Form */}
+      {showEditForm && (
+        <div className="card p-6">
+          <h2 className="text-xl font-display font-semibold mb-4">Edit Threat</h2>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              const response = await api.updateThreat(editingThreat.id, editingThreat);
+              setThreats(threats.map(threat => 
+                threat.id === editingThreat.id ? { ...threat, ...response } : threat
+              ));
+              setSelectedThreat({ ...selectedThreat, ...response });
+              setShowEditForm(false);
+            } catch (err) {
+              console.error('Error updating threat:', err);
+              alert('Error updating threat. Please try again.');
+            }
+          }} className="space-y-4">
+            <div>
+              <label htmlFor="edit_name" className="block text-sm font-medium text-secondary-700">Name</label>
+              <input type="text" id="edit_name" value={editingThreat.name} onChange={(e) => setEditingThreat({...editingThreat, name: e.target.value})} className="input mt-1" required />
+            </div>
+            <div>
+              <label htmlFor="edit_description" className="block text-sm font-medium text-secondary-700">Description</label>
+              <textarea id="edit_description" value={editingThreat.description} onChange={(e) => setEditingThreat({...editingThreat, description: e.target.value})} className="input mt-1 h-32" required />
+            </div>
+            <div>
+              <label htmlFor="edit_threat_type" className="block text-sm font-medium text-secondary-700">Threat Type</label>
+              <select id="edit_threat_type" value={editingThreat.threat_type_id} onChange={(e) => setEditingThreat({...editingThreat, threat_type_id: e.target.value})} className="input mt-1" required>
+                <option value="">Select a threat type...</option>
+                {threatTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+              </select>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => setShowEditForm(false)} className="btn-secondary">Cancel</button>
+              <button type="submit" className="btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Threat Table */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -239,13 +286,31 @@ const Threats = () => {
               <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">{selectedThreat.threat_type_name}</span>
             </div>
             {isAuthenticated && (
-              <button
-                onClick={(e) => handleDeleteThreat(e, selectedThreat.id)}
-                className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
-                title="Delete threat"
-              >
-                <Trash2 className="w-4 h-4 mr-2" /> Delete Threat
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowEditForm(true);
+                    setEditingThreat({
+                      id: selectedThreat.id,
+                      name: selectedThreat.name,
+                      description: selectedThreat.description,
+                      threat_type_id: selectedThreat.threat_type_id
+                    });
+                  }}
+                  className="btn-primary inline-flex items-center"
+                  title="Edit threat"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={(e) => handleDeleteThreat(e, selectedThreat.id)}
+                  className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                  title="Delete threat"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Threat
+                </button>
+              </div>
             )}
           </div>
 

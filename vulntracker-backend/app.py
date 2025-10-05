@@ -27,6 +27,7 @@ from schemas import (
     VendorSchema, SoftwareSchema, VulnerabilitySchema,
     PatchSchema, ThreatSchema, ThreatTypeSchema, VulnerabilityThreatSchema
 )
+from routes.chat import chat_bp
 
 # Configure structured logging
 structlog.configure(
@@ -87,6 +88,9 @@ swaggerui_blueprint = get_swaggerui_blueprint(
     config={'app_name': "VulnTracker API"}
 )
 app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
+
+# Register chat blueprint
+app.register_blueprint(chat_bp, url_prefix='/api')
 
 # Error handlers
 @app.errorhandler(Exception)
@@ -346,60 +350,155 @@ def handle_vulnerabilities():
             print(f"Error creating vulnerability: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
-@app.route("/api/vulnerabilities/<int:vuln_id>", methods=['DELETE'])
-def delete_vulnerability(vuln_id):
-    try:
-        # Check for linked threats first
-        threat_links = supabase.table("vulnerability_threats").select("*").eq("vulnerability_id", vuln_id).execute()
-        if threat_links.data:
-            # Delete all threat links first
-            supabase.table("vulnerability_threats").delete().eq("vulnerability_id", vuln_id).execute()
-        
-        # Now delete the vulnerability
-        response = supabase.table("vulnerabilities").delete().eq("id", vuln_id).execute()
-        if not response.data:
-            return jsonify({"error": "Vulnerability not found"}), 404
+@app.route("/api/vulnerabilities/<int:vuln_id>", methods=['PUT', 'DELETE'])
+@jwt_required()
+def manage_vulnerability(vuln_id):
+    if request.method == 'DELETE':
+        try:
+            # Check for linked threats first
+            threat_links = supabase.table("vulnerability_threats").select("*").eq("vulnerability_id", vuln_id).execute()
+            if threat_links.data:
+                # Delete all threat links first
+                supabase.table("vulnerability_threats").delete().eq("vulnerability_id", vuln_id).execute()
             
-        return jsonify({"message": "Vulnerability deleted successfully"}), 200
-    except Exception as e:
-        logger.error("vulnerability_delete_error", error=str(e))
-        return jsonify({"error": str(e)}), 500
+            # Now delete the vulnerability
+            response = supabase.table("vulnerabilities").delete().eq("id", vuln_id).execute()
+            if not response.data:
+                return jsonify({"error": "Vulnerability not found"}), 404
+                
+            return jsonify({"message": "Vulnerability deleted successfully"}), 200
+        except Exception as e:
+            logger.error("vulnerability_delete_error", error=str(e))
+            return jsonify({"error": str(e)}), 500
+            
+    elif request.method == 'PUT':
+        try:
+            data = request.json
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+
+            # Create an update dict with only the fields that are provided
+            update_data = {}
+            allowed_fields = ['cve_id', 'name', 'summary', 'severity', 'status', 'software_id', 'cvss_score', 'description']
+            for field in allowed_fields:
+                if field in data:
+                    update_data[field] = data[field]
+
+            response = supabase.table("vulnerabilities").update(update_data).eq("id", vuln_id).execute()
+            if not response.data:
+                return jsonify({"error": "Vulnerability not found"}), 404
+
+            return jsonify(response.data[0]), 200
+        except Exception as e:
+            print(f"Error updating vulnerability: {str(e)}")
+            return jsonify({"error": str(e)}), 500
     
-@app.route("/api/threats/<int:vuln_id>", methods=['DELETE'])
+@app.route("/api/threats/<int:threat_id>", methods=['PUT', 'DELETE'])
 @jwt_required()
-def delete_threat(vuln_id):
-    try:
-        response = supabase.table("threats").delete().eq("id", vuln_id).execute()
-        if not response.data:
-            return jsonify({"error": "Vulnerability not found"}), 404
-        return jsonify({"message": "Vulnerability deleted successfully"}), 200
-    except Exception as e:
-        print(f"Error deleting vulnerability: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+def manage_threat(threat_id):
+    if request.method == 'DELETE':
+        try:
+            response = supabase.table("threats").delete().eq("id", threat_id).execute()
+            if not response.data:
+                return jsonify({"error": "Threat not found"}), 404
+            return jsonify({"message": "Threat deleted successfully"}), 200
+        except Exception as e:
+            print(f"Error deleting threat: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+    elif request.method == 'PUT':
+        try:
+            data = request.json
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+
+            # Create an update dict with only the fields that are provided
+            update_data = {}
+            allowed_fields = ['name', 'description', 'threat_type_id']
+            for field in allowed_fields:
+                if field in data:
+                    update_data[field] = data[field]
+
+            response = supabase.table("threats").update(update_data).eq("id", threat_id).execute()
+            if not response.data:
+                return jsonify({"error": "Threat not found"}), 404
+
+            return jsonify(response.data[0]), 200
+        except Exception as e:
+            print(f"Error updating threat: {str(e)}")
+            return jsonify({"error": str(e)}), 500
     
-@app.route("/api/patches/<int:vuln_id>", methods=['DELETE'])
+@app.route("/api/patches/<int:patch_id>", methods=['PUT', 'DELETE'])
 @jwt_required()
-def delete_patch(vuln_id):
-    try:
-        response = supabase.table("patches").delete().eq("id", vuln_id).execute()
-        if not response.data:
-            return jsonify({"error": "Vulnerability not found"}), 404
-        return jsonify({"message": "Vulnerability deleted successfully"}), 200
-    except Exception as e:
-        print(f"Error deleting vulnerability: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+def manage_patch(patch_id):
+    if request.method == 'DELETE':
+        try:
+            response = supabase.table("patches").delete().eq("id", patch_id).execute()
+            if not response.data:
+                return jsonify({"error": "Patch not found"}), 404
+            return jsonify({"message": "Patch deleted successfully"}), 200
+        except Exception as e:
+            print(f"Error deleting patch: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+    elif request.method == 'PUT':
+        try:
+            data = request.json
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+
+            # Create an update dict with only the fields that are provided
+            update_data = {}
+            allowed_fields = ['vulnerability_id', 'url', 'released', 'description']
+            for field in allowed_fields:
+                if field in data:
+                    update_data[field] = data[field]
+
+            response = supabase.table("patches").update(update_data).eq("id", patch_id).execute()
+            if not response.data:
+                return jsonify({"error": "Patch not found"}), 404
+
+            return jsonify(response.data[0]), 200
+        except Exception as e:
+            print(f"Error updating patch: {str(e)}")
+            return jsonify({"error": str(e)}), 500
     
-@app.route("/api/software/<int:vuln_id>", methods=['DELETE'])
+@app.route("/api/software/<int:software_id>", methods=['PUT', 'DELETE'])
 @jwt_required()
-def delete_software(vuln_id):
-    try:
-        response = supabase.table("software").delete().eq("id", vuln_id).execute()
-        if not response.data:
-            return jsonify({"error": "Software not found"}), 404
-        return jsonify({"message": "Software deleted successfully"}), 200
-    except Exception as e:
-        print(f"Error deleting software: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+def manage_software(software_id):
+    if request.method == 'DELETE':
+        try:
+            # First check if there are any vulnerabilities associated with this software
+            vuln_check = supabase.table("vulnerabilities").select("id").eq("software_id", software_id).execute()
+            if vuln_check.data and len(vuln_check.data) > 0:
+                return jsonify({"error": "Cannot delete software that has vulnerabilities"}), 400
+
+            response = supabase.table("software").delete().eq("id", software_id).execute()
+            if not response.data:
+                return jsonify({"error": "Software not found"}), 404
+            return jsonify({"message": "Software deleted successfully"}), 200
+        except Exception as e:
+            print(f"Error deleting software: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+    elif request.method == 'PUT':
+        try:
+            data = request.json
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+
+            # Create an update dict with only the fields that are provided
+            update_data = {}
+            allowed_fields = ['name', 'vendor_id', 'version', 'description']
+            for field in allowed_fields:
+                if field in data:
+                    update_data[field] = data[field]
+
+            response = supabase.table("software").update(update_data).eq("id", software_id).execute()
+            if not response.data:
+                return jsonify({"error": "Software not found"}), 404
+
+            return jsonify(response.data[0]), 200
+        except Exception as e:
+            print(f"Error updating software: {str(e)}")
+            return jsonify({"error": str(e)}), 500
 
 @app.route("/api/threats", methods=['GET', 'POST'])
 
