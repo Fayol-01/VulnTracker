@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, Filter, ArrowLeft, ArrowRight, Plus, X } from 'lucide-react';
 import { api } from '../services/api';
+import FilterPanel from '../components/FilterPanel';
 
 const Vulnerabilities = () => {
   const [vulnerabilities, setVulnerabilities] = useState([]);
+  const [filteredVulnerabilities, setFilteredVulnerabilities] = useState([]);
   const [selectedVuln, setSelectedVuln] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    cveId: '',
+    severity: '',
+    software: '',
+    summary: ''
+  });
   const [showAddForm, setShowAddForm] = useState(false);
   const [softwareList, setSoftwareList] = useState([]);
   const [threatList, setThreatList] = useState([]);
@@ -23,6 +32,36 @@ const Vulnerabilities = () => {
     threats: [], // Array of threat IDs
   });
 
+  const applyFilters = (currentFilters) => {
+    let filtered = [...vulnerabilities];
+    
+    if (currentFilters.cveId) {
+      filtered = filtered.filter(vuln => 
+        vuln.cve_id.toLowerCase().includes(currentFilters.cveId.toLowerCase())
+      );
+    }
+    
+    if (currentFilters.severity) {
+      filtered = filtered.filter(vuln => 
+        vuln.severity.toLowerCase() === currentFilters.severity.toLowerCase()
+      );
+    }
+    
+    if (currentFilters.software) {
+      filtered = filtered.filter(vuln => 
+        vuln.software?.name.toLowerCase().includes(currentFilters.software.toLowerCase())
+      );
+    }
+
+    if (currentFilters.summary) {
+      filtered = filtered.filter(vuln => 
+        vuln.summary.toLowerCase().includes(currentFilters.summary.toLowerCase())
+      );
+    }
+    
+    setFilteredVulnerabilities(filtered);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -31,10 +70,14 @@ const Vulnerabilities = () => {
           api.getVulnerabilities(),
           api.getSoftware(),
           api.getThreats()
+          
         ]);
         setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
         setSoftwareList(Array.isArray(software) ? software : []);
         setThreatList(Array.isArray(threats) ? threats : []);
+        const vulnsArray = Array.isArray(vulnsData) ? vulnsData : [];
+        setVulnerabilities(vulnsArray);
+        setFilteredVulnerabilities(vulnsArray);
       } catch (err) {
         setError('Failed to fetch data');
         console.error('Error:', err);
@@ -158,11 +201,48 @@ const Vulnerabilities = () => {
             <Plus className="w-4 h-4 mr-2" />
             Add Vulnerability
           </button>
-          <button className="btn-secondary inline-flex items-center">
+          {/* <button className="btn-secondary inline-flex items-center">
             <Filter className="w-4 h-4 mr-2" />
             Filter
-          </button>
+          </button> */}
+          <FilterPanel
+            filters={filters}
+            setFilters={setFilters}
+            isOpen={isFilterOpen}
+            setIsOpen={setIsFilterOpen}
+            applyFilters={applyFilters}
+            filterOptions={[
+              {
+                key: 'cveId',
+                label: 'CVE ID',
+                type: 'text'
+              },
+              {
+                key: 'severity',
+                label: 'Severity',
+                type: 'select',
+                options: [
+                  { value: 'critical', label: 'Critical' },
+                  { value: 'high', label: 'High' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'low', label: 'Low' }
+                ]
+              },
+              {
+                key: 'software',
+                label: 'Software',
+                type: 'text'
+              },
+              {
+                key: 'summary',
+                label: 'Summary',
+                type: 'text'
+              }
+            ]}
+          />
         </div>
+
+
       </div>
 
       {/* Add Vulnerability Form */}
@@ -317,7 +397,7 @@ const Vulnerabilities = () => {
               </tr>
             </thead>
             <tbody>
-              {currentVulnerabilities.map((vuln) => (
+              {filteredVulnerabilities.map((vuln) => (
                 <tr
                   key={vuln.id}
                   onClick={() => setSelectedVuln(vuln)}

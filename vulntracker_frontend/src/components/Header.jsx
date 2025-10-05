@@ -75,6 +75,28 @@ const Header = () => {
               </Link>
             ))}
             
+            {/* Search box - only shown when authenticated */}
+            {isAuthenticated && (
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="w-64 px-4 py-2 text-sm text-secondary-900 bg-secondary-50 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  onChange={(e) => {
+                    // Add search functionality here
+                    console.log('Searching:', e.target.value);
+                  }}
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                  <img
+                    src="/src/assets/search-b.png"
+                    alt="Search"
+                    className="w-4 h-4 opacity-50"
+                  />
+                </div>
+              </div>
+            )}
+            
             {isAuthenticated ? (
               <div className="relative account-dropdown">
                 <button
@@ -154,6 +176,25 @@ const Header = () => {
               
               {isAuthenticated ? (
                 <>
+                  {/* Mobile search box */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      className="w-full px-4 py-2 text-sm text-secondary-900 bg-secondary-50 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      onChange={(e) => {
+                        // Add search functionality here
+                        console.log('Searching:', e.target.value);
+                      }}
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                      <img
+                        src="/src/assets/search-b.png"
+                        alt="Search"
+                        className="w-4 h-4 opacity-50"
+                      />
+                    </div>
+                  </div>
                   <div className="text-sm text-secondary-700 border-t pt-4">
                     {user?.email}
                   </div>
