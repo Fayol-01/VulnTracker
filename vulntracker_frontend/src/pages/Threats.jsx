@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Plus, Filter, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
+import { supabase } from '../services/supabase';
 
 const Threats = () => {
   const [threats, setThreats] = useState([]);
@@ -9,6 +10,9 @@ const Threats = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [newThreat, setNewThreat] = useState({
     name: '',
     description: '',
@@ -35,6 +39,13 @@ const Threats = () => {
     };
 
     fetchData();
+
+    // Check authentication status
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      setIsAuthenticated(!!data.session);
+    };
+    checkAuth();
   }, []);
 
   const handleCreateThreat = async (e) => {
@@ -47,6 +58,47 @@ const Threats = () => {
     } catch (err) {
       console.error('Error creating threat:', err);
     }
+  };
+
+  const handleDeleteThreat = async (e, id) => {
+    e.stopPropagation(); // Prevent row click event
+    if (!window.confirm('Are you sure you want to delete this threat? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await api.deleteThreat(id);
+      setThreats(threats.filter(item => item.id !== id));
+      if (selectedThreat?.id === id) {
+        setSelectedThreat(null);
+      }
+    } catch (error) {
+      console.error('Error deleting threat:', error);
+      if (error.message.includes('Cannot delete threat that has vulnerabilities')) {
+        alert('Cannot delete threat that has vulnerabilities. Remove the vulnerabilities first.');
+      } else {
+        alert('Error deleting threat. Please try again.');
+      }
+    }
+  };
+
+  // Calculate pagination values
+  const totalItems = threats.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentThreats = threats.slice(startIndex, endIndex);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handleItemsPerPageChange = (e) => {
+    const newItemsPerPage = parseInt(e.target.value);
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page when changing items per page
   };
 
   if (isLoading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div></div>;
@@ -106,27 +158,95 @@ const Threats = () => {
               </tr>
             </thead>
             <tbody>
-              {threats.map((threat) => (
+              {currentThreats.map((threat) => (
                 <tr key={threat.id} onClick={() => setSelectedThreat(threat)} className="border-b border-secondary-200 hover:bg-secondary-50 cursor-pointer transition-colors">
                   <td className="table-cell font-medium text-primary-600">{threat.name}</td>
                   <td className="table-cell">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">{threat.threat_type_name}</span>
                   </td>
                   <td className="table-cell truncate max-w-md">{threat.description}</td>
-                  <td className="table-cell">{threat.vulnerabilities?.length || 0}</td>
+                  <td className="table-cell">
+                    {threat.vulnerabilities?.length || 0}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination */}
+        <div className="flex items-center justify-between border-t border-secondary-200 px-6 py-3">
+          <div className="flex items-center gap-2">
+            <select 
+              className="input py-1 pl-3 pr-8"
+              value={itemsPerPage}
+              onChange={handleItemsPerPageChange}
+            >
+              <option value={10}>10 per page</option>
+              <option value={25}>25 per page</option>
+              <option value={50}>50 per page</option>
+            </select>
+            <span className="text-sm text-secondary-600">
+              Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} results
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(page => {
+                // Show first page, last page, current page, and pages around current page
+                const nearCurrent = Math.abs(page - currentPage) <= 1;
+                return page === 1 || page === totalPages || nearCurrent;
+              })
+              .map((page, index, array) => (
+                <React.Fragment key={page}>
+                  {index > 0 && array[index - 1] !== page - 1 && (
+                    <span className="text-secondary-400">...</span>
+                  )}
+                  <button 
+                    className={`btn-secondary py-1 px-3 ${currentPage === page ? 'bg-primary-100 text-primary-700' : ''}`}
+                    onClick={() => handlePageChange(page)}
+                  >
+                    {page}
+                  </button>
+                </React.Fragment>
+              ))
+            }
+            <button 
+              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
+        
 
       {/* Selected Threat */}
       {selectedThreat && (
         <div className="card p-6 space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-display font-bold text-secondary-900">{selectedThreat.name}</h2>
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">{selectedThreat.threat_type_name}</span>
+            <div>
+              <h2 className="text-2xl font-display font-bold text-secondary-900">{selectedThreat.name}</h2>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">{selectedThreat.threat_type_name}</span>
+            </div>
+            {isAuthenticated && (
+              <button
+                onClick={(e) => handleDeleteThreat(e, selectedThreat.id)}
+                className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                title="Delete threat"
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Threat
+              </button>
+            )}
           </div>
 
           <div className="prose max-w-none">

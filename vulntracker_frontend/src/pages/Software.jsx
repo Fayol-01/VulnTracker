@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Plus, Filter, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
+import { supabase } from '../services/supabase';
 
 const Software = () => {
   const [software, setSoftware] = useState([]);
@@ -9,10 +10,14 @@ const Software = () => {
   const [error, setError] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [vendors, setVendors] = useState([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [newSoftware, setNewSoftware] = useState({
     name: '',
     vendor_id: '',
-    version: ''
+    version: '',
+    description: '',
   });
 
   useEffect(() => {
@@ -35,6 +40,20 @@ const Software = () => {
     };
 
     fetchData();
+
+    // Check authentication status
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      setIsAuthenticated(!!data.session);
+    };
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   const handleCreateSoftware = async (e) => {
@@ -46,10 +65,34 @@ const Software = () => {
       setNewSoftware({
         name: '',
         vendor_id: '',
-        version: ''
+        version: '',
+        description: '',
       });
     } catch (err) {
       console.error('Error creating software:', err);
+    }
+  };
+
+  const handleDeleteSoftware = async (e, id) => {
+    e.stopPropagation(); // Prevent row click event
+    if (!window.confirm('Are you sure you want to delete this software? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await api.deleteSoftware(id);
+      setSoftware(software.filter(item => item.id !== id));
+      if (selectedSoftware?.id === id) {
+        setSelectedSoftware(null);
+      }
+    } catch (error) {
+      console.error('Error deleting software:', error);
+      // Check if error is about existing vulnerabilities
+      if (error.message.includes('Cannot delete software that has vulnerabilities')) {
+        alert('Cannot delete software that has vulnerabilities. Delete the vulnerabilities first.');
+      } else {
+        alert('Error deleting software. Please try again.');
+      }
     }
   };
 
@@ -71,6 +114,25 @@ const Software = () => {
     );
   }
 
+  // Calculate pagination values
+  const totalItems = software.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentSoftware = software.slice(startIndex, endIndex);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handleItemsPerPageChange = (e) => {
+    const newItemsPerPage = parseInt(e.target.value);
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -83,13 +145,14 @@ const Software = () => {
             <Filter className="w-4 h-4 mr-2" />
             Filter
           </button>
-          <button 
-            className="btn-primary inline-flex items-center"
-            onClick={() => setShowCreateForm(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Software
-          </button>
+          {isAuthenticated && (
+            <button 
+              onClick={() => setShowCreateForm(true)}
+              className="btn-primary inline-flex items-center"
+            >
+              <Plus className="w-4 h-4 mr-2" /> Add Software
+            </button>
+          )}
         </div>
       </div>
 
@@ -143,6 +206,17 @@ const Software = () => {
                 placeholder="e.g., 1.0.0"
               />
             </div>
+            <div>
+                <label className="block text-sm font-medium text-secondary-700">Description</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="3"
+                  placeholder="Description of the software"
+                  value={newSoftware.description}
+                  onChange={(e) => setNewSoftware({...newSoftware, description: e.target.value})}
+                  required
+                ></textarea>
+            </div>
             <div className="flex justify-end gap-3">
               <button
                 type="button"
@@ -173,7 +247,7 @@ const Software = () => {
               </tr>
             </thead>
             <tbody>
-              {software.map((item) => (
+              {currentSoftware.map((item) => (
                 <tr
                   key={item.id}
                   onClick={() => setSelectedSoftware(item)}
@@ -205,21 +279,52 @@ const Software = () => {
         {/* Pagination */}
         <div className="flex items-center justify-between border-t border-secondary-200 px-6 py-3">
           <div className="flex items-center gap-2">
-            <select className="input py-1 pl-3 pr-8">
-              <option>10 per page</option>
-              <option>25 per page</option>
-              <option>50 per page</option>
+            <select 
+              className="input py-1 pl-3 pr-8"
+              value={itemsPerPage}
+              onChange={handleItemsPerPageChange}
+            >
+              <option value={10}>10 per page</option>
+              <option value={25}>25 per page</option>
+              <option value={50}>50 per page</option>
             </select>
             <span className="text-sm text-secondary-600">
-              Showing 1-{software.length} of {software.length} results
+              Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} results
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button className="btn-secondary py-1 px-3">
+            <button 
+              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <button className="btn-secondary py-1 px-3">1</button>
-            <button className="btn-secondary py-1 px-3">
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(page => {
+                // Show first page, last page, current page, and pages around current page
+                const nearCurrent = Math.abs(page - currentPage) <= 1;
+                return page === 1 || page === totalPages || nearCurrent;
+              })
+              .map((page, index, array) => (
+                <React.Fragment key={page}>
+                  {index > 0 && array[index - 1] !== page - 1 && (
+                    <span className="text-secondary-400">...</span>
+                  )}
+                  <button 
+                    className={`btn-secondary py-1 px-3 ${currentPage === page ? 'bg-primary-100 text-primary-700' : ''}`}
+                    onClick={() => handlePageChange(page)}
+                  >
+                    {page}
+                  </button>
+                </React.Fragment>
+              ))
+            }
+            <button 
+              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -258,8 +363,24 @@ const Software = () => {
               </span>
             </div>
           </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm text-secondary-600 mb-1">
+                {selectedSoftware.description}
+              </h2>
+            </div>
+          </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-3">
+            {isAuthenticated && (
+              <button
+                onClick={(e) => handleDeleteSoftware(e, selectedSoftware.id)}
+                className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                title="Delete software"
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Software
+              </button>
+            )}
             <button className="btn-primary">Edit Software</button>
           </div>
         </div>

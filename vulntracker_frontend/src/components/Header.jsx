@@ -1,23 +1,51 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Search, Menu, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Menu, X, User, LogOut } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, signOut } = useAuth();
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isAccountDropdownOpen && !event.target.closest('.account-dropdown')) {
+        setIsAccountDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [isAccountDropdownOpen]);
 
   const isActive = (path) => {
     return location.pathname === path;
   };
 
-  const navigation = [
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+    setIsAccountDropdownOpen(false);
+  };
+
+  const publicNavigation = isAuthenticated ? [] : [
     { name: 'Home', path: '/' },
+    { name: 'About', path: '/about' },
+  ];
+
+  const protectedNavigation = [
+    { name: 'Dashboard', path: '/dashboard' },
     { name: 'Vulnerabilities', path: '/vulnerabilities' },
     { name: 'Threats', path: '/threats' },
     { name: 'Patches', path: '/patches' },
     { name: 'Software', path: '/software' },
-    { name: 'About', path: '/about' },
   ];
+  
+  const navigation = [...publicNavigation, ...(isAuthenticated ? protectedNavigation : [])];
 
   return (
     <header className="bg-white shadow-sm">
@@ -31,6 +59,89 @@ const Header = () => {
             <span className="text-xl font-display font-bold text-secondary-900">VulnTracker</span>
           </Link>
 
+          {/* Desktop navigation */}
+          <nav className="hidden md:flex items-center space-x-8">
+            {navigation.map((item) => (
+              <Link
+                key={item.name}
+                to={item.path}
+                className={`text-base font-medium ${
+                  isActive(item.path)
+                    ? 'text-primary-600'
+                    : 'text-secondary-600 hover:text-secondary-900'
+                }`}
+              >
+                {item.name}
+              </Link>
+            ))}
+            
+            {/* Search box - only shown when authenticated */}
+            {isAuthenticated && (
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="w-64 px-4 py-2 text-sm text-secondary-900 bg-secondary-50 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  onChange={(e) => {
+                    // Add search functionality here
+                    console.log('Searching:', e.target.value);
+                  }}
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                  <img
+                    src="/src/assets/search-b.png"
+                    alt="Search"
+                    className="w-4 h-4 opacity-50"
+                  />
+                </div>
+              </div>
+            )}
+            
+            {isAuthenticated ? (
+              <div className="relative account-dropdown">
+                <button
+                  onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
+                  className="flex items-center space-x-2 text-base font-medium text-secondary-600 hover:text-secondary-900"
+                >
+                  <User className="w-5 h-5" />
+                  <span>Account</span>
+                </button>
+                
+                {isAccountDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                    <div className="py-1">
+                      <div className="px-4 py-2 text-sm text-secondary-700 border-b">
+                        {user?.email}
+                      </div>
+                      <button
+                        onClick={handleSignOut}
+                        className="flex items-center w-full px-4 py-2 text-sm text-secondary-700 hover:bg-secondary-100"
+                      >
+                        <LogOut className="w-4 h-4 mr-2" />
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center space-x-4">
+                <Link
+                  to="/login"
+                  className="text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  to="/signup"
+                  className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+                >
+                  Sign up
+                </Link>
+              </div>
+            )}
+          </nav>
+
           {/* Mobile menu button */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -42,75 +153,81 @@ const Header = () => {
               <Menu className="w-6 h-6 text-secondary-900" />
             )}
           </button>
-
-          {/* Desktop navigation */}
-          <nav className="hidden md:flex items-center space-x-8">
-            {navigation.map((item) => (
-              <Link
-                key={item.name}
-                to={item.path}
-                className={`nav-link ${
-                  isActive(item.path) ? 'text-primary-600' : ''
-                }`}
-              >
-                {item.name}
-              </Link>
-            ))}
-          </nav>
-
-          {/* Search and Auth (Desktop) */}
-          <div className="hidden md:flex items-center space-x-4">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search..."
-                className="input w-64 pl-10"
-              />
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-secondary-400" />
-            </div>
-            <Link to="/login" className="btn-primary">
-              Login / Sign Up
-            </Link>
-          </div>
         </div>
-      </div>
 
-      {/* Mobile menu */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden border-t border-secondary-100">
-          <div className="container mx-auto px-4 py-3 space-y-3">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search..."
-                className="input pl-10"
-              />
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-secondary-400" />
-            </div>
-            <nav className="flex flex-col space-y-2">
+        {/* Mobile menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden py-4">
+            <div className="flex flex-col space-y-4">
               {navigation.map((item) => (
                 <Link
                   key={item.name}
                   to={item.path}
-                  className={`nav-link py-2 ${
-                    isActive(item.path) ? 'text-primary-600' : ''
+                  className={`text-base font-medium ${
+                    isActive(item.path)
+                      ? 'text-primary-600'
+                      : 'text-secondary-600 hover:text-secondary-900'
                   }`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {item.name}
                 </Link>
               ))}
-            </nav>
-            <Link
-              to="/login"
-              className="btn-primary w-full justify-center"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Login / Sign Up
-            </Link>
+              
+              {isAuthenticated ? (
+                <>
+                  {/* Mobile search box */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      className="w-full px-4 py-2 text-sm text-secondary-900 bg-secondary-50 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      onChange={(e) => {
+                        // Add search functionality here
+                        console.log('Searching:', e.target.value);
+                      }}
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                      <img
+                        src="/src/assets/search-b.png"
+                        alt="Search"
+                        className="w-4 h-4 opacity-50"
+                      />
+                    </div>
+                  </div>
+                  <div className="text-sm text-secondary-700 border-t pt-4">
+                    {user?.email}
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="flex items-center text-base font-medium text-secondary-600 hover:text-secondary-900"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <div className="flex flex-col space-y-4 border-t pt-4">
+                  <Link
+                    to="/login"
+                    className="text-primary-600 hover:text-primary-700 font-medium"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 text-center"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Sign up
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </header>
   );
 };

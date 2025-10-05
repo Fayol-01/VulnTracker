@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Shield,
   AlertTriangle,
@@ -11,57 +12,58 @@ import {
 
 const Home = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
-//   const stats = [
-//     {
-//       label: 'Total Vulnerabilities',
-//       value: '12,345',
-//       icon: Shield,
-//       color: 'text-blue-600',
-//     },
-//     {
-//       label: 'Active Threats',
-//       value: '456',
-//       icon: AlertTriangle,
-//       color: 'text-orange-600',
-//     },
-//     {
-//       label: 'Recent Patches',
-//       value: '789',
-//       icon: Wrench,
-//       color: 'text-green-600',
-//     },
-//     {
-//       label: 'Monitored Applications',
-//       value: '1,230',
-//       icon: Boxes,
-//       color: 'text-purple-600',
-//     },
-//   ];
+  const stats = [
+    {
+      label: 'Total Vulnerabilities',
+      value: '12,345',
+      icon: Shield,
+      color: 'text-blue-600',
+    },
+    {
+      label: 'Active Threats',
+      value: '456',
+      icon: AlertTriangle,
+      color: 'text-orange-600',
+    },
+    {
+      label: 'Recent Patches',
+      value: '789',
+      icon: Wrench,
+      color: 'text-green-600',
+    },
+    {
+      label: 'Monitored Applications',
+      value: '1,230',
+      icon: Boxes,
+      color: 'text-purple-600',
+    },
+  ];
 
-//   const recentVulnerabilities = [
-//     {
-//       id: 'CVE-2023-4567',
-//       title: 'Remote Code Execution in AcmeOS',
-//       description: 'A critical vulnerability found in AcmeOS kernel versions 3.x to 5.x.',
-//       severity: 'critical',
-//       date: '2023-10-25',
-//     },
-//     {
-//       id: 'CVE-2023-8901',
-//       title: 'Cross-Site Scripting in SecureMail',
-//       description: 'Authenticated XSS vulnerability affecting the SecureMail client.',
-//       severity: 'high',
-//       date: '2023-10-20',
-//     },
-//     {
-//       id: 'CVE-2023-2345',
-//       title: 'Information Disclosure in FileVault',
-//       description: 'A minor flaw allowing unauthorized access to non-critical metadata.',
-//       severity: 'medium',
-//       date: '2023-10-15',
-//     },
-//   ];
+  const recentVulnerabilities = [
+    {
+      id: 'CVE-2023-4567',
+      title: 'Remote Code Execution in AcmeOS',
+      description: 'A critical vulnerability found in AcmeOS kernel versions 3.x to 5.x.',
+      severity: 'critical',
+      date: '2023-10-25',
+    },
+    {
+      id: 'CVE-2023-8901',
+      title: 'Cross-Site Scripting in SecureMail',
+      description: 'Authenticated XSS vulnerability affecting the SecureMail client.',
+      severity: 'high',
+      date: '2023-10-20',
+    },
+    {
+      id: 'CVE-2023-2345',
+      title: 'Information Disclosure in FileVault',
+      description: 'A minor flaw allowing unauthorized access to non-critical metadata.',
+      severity: 'medium',
+      date: '2023-10-15',
+    },
+  ];
 
   return (
     <div className="space-y-12">
@@ -77,14 +79,39 @@ const Home = () => {
             entire application ecosystem in one unified platform.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={() => navigate('/vulnerabilities')}
-              className="btn-primary w-full sm:w-auto"
-            >
-              Explore Vulnerabilities
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </button>
-            <button className="btn-secondary w-full sm:w-auto">View Documentation</button>
+            {isAuthenticated ? (
+              <>
+                <button
+                  onClick={() => navigate('/vulnerabilities')}
+                  className="btn-primary w-full sm:w-auto"
+                >
+                  Explore Vulnerabilities
+                  <ArrowRight className="w-5 h-5 ml-2" />
+                </button>
+                <button 
+                  onClick={() => navigate('/software')}
+                  className="btn-secondary w-full sm:w-auto"
+                >
+                  View Software
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => navigate('/login')}
+                  className="btn-primary w-full sm:w-auto"
+                >
+                  Sign In to Access
+                  <ArrowRight className="w-5 h-5 ml-2" />
+                </button>
+                <button
+                  onClick={() => navigate('/signup')}
+                  className="btn-secondary w-full sm:w-auto"
+                >
+                  Create Account
+                </button>
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -145,29 +172,31 @@ const Home = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="card bg-gradient-to-r from-primary-600 to-primary-700 p-8 md:p-12 text-white text-center">
-        <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-          Ready to Secure Your Applications?
-        </h2>
-        <p className="text-primary-100 text-lg mb-8 max-w-2xl mx-auto">
-          Join thousands of security professionals who trust VulnTracker for their
-          vulnerability management needs.
-        </p>
-        <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-          <button
-            onClick={() => navigate('/signup')}
-            className="btn bg-white text-primary-600 hover:bg-primary-50 focus:ring-white w-full sm:w-auto"
-          >
-            Get Started
-          </button>
-          <button
-            onClick={() => navigate('/contact')}
-            className="btn border border-white text-white hover:bg-primary-500 focus:ring-white w-full sm:w-auto"
-          >
-            Contact Sales
-          </button>
-        </div>
-      </section>
+      {!isAuthenticated && (
+        <section className="card bg-gradient-to-r from-primary-600 to-primary-700 p-8 md:p-12 text-white text-center">
+          <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
+            Ready to Secure Your Applications?
+          </h2>
+          <p className="text-primary-100 text-lg mb-8 max-w-2xl mx-auto">
+            Join thousands of security professionals who trust VulnTracker for their
+            vulnerability management needs.
+          </p>
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
+            <button
+              onClick={() => navigate('/signup')}
+              className="btn bg-white text-primary-600 hover:bg-primary-50 focus:ring-white w-full sm:w-auto"
+            >
+              Get Started
+            </button>
+            <button
+              onClick={() => navigate('/contact')}
+              className="btn border border-white text-white hover:bg-primary-500 focus:ring-white w-full sm:w-auto"
+            >
+              Contact Sales
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 };
