@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
+import { Plus, Filter, ArrowLeft, ArrowRight, Trash2, X } from 'lucide-react';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
 
@@ -14,6 +14,12 @@ const Threats = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [newThreat, setNewThreat] = useState({
+    name: '',
+    description: '',
+    threat_type_id: ''
+  });
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingThreat, setEditingThreat] = useState({
     name: '',
     description: '',
     threat_type_id: ''
@@ -119,29 +125,92 @@ const Threats = () => {
 
       {/* Create Form */}
       {showCreateForm && (
-        <div className="card p-6">
-          <h2 className="text-xl font-display font-semibold mb-4">Create New Threat</h2>
-          <form onSubmit={handleCreateThreat} className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-secondary-700">Name</label>
-              <input type="text" id="name" value={newThreat.name} onChange={(e) => setNewThreat({...newThreat, name: e.target.value})} className="input mt-1" required />
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h2 className="text-2xl font-display font-bold">Create New Threat</h2>
+              <button onClick={() => setShowCreateForm(false)} className="text-secondary-500 hover:text-secondary-700">
+                <X className="w-6 h-6" />
+              </button>
             </div>
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-secondary-700">Description</label>
-              <textarea id="description" value={newThreat.description} onChange={(e) => setNewThreat({...newThreat, description: e.target.value})} className="input mt-1 h-32" required />
+            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
+              <form onSubmit={handleCreateThreat} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="name" className="block text-sm font-medium text-secondary-700">Name</label>
+                    <input type="text" id="name" value={newThreat.name} onChange={(e) => setNewThreat({...newThreat, name: e.target.value})} className="input mt-1 w-full" required />
+                  </div>
+                  <div>
+                    <label htmlFor="threat_type" className="block text-sm font-medium text-secondary-700">Threat Type</label>
+                    <select id="threat_type" value={newThreat.threat_type_id} onChange={(e) => setNewThreat({...newThreat, threat_type_id: e.target.value})} className="input mt-1 w-full" required>
+                      <option value="">Select a threat type...</option>
+                      {threatTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="description" className="block text-sm font-medium text-secondary-700">Description</label>
+                  <textarea id="description" value={newThreat.description} onChange={(e) => setNewThreat({...newThreat, description: e.target.value})} className="input mt-1 w-full" rows="4" required />
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                  <button type="button" onClick={() => setShowCreateForm(false)} className="btn-secondary">Cancel</button>
+                  <button type="submit" className="btn-primary">Create Threat</button>
+                </div>
+              </form>
             </div>
-            <div>
-              <label htmlFor="threat_type" className="block text-sm font-medium text-secondary-700">Threat Type</label>
-              <select id="threat_type" value={newThreat.threat_type_id} onChange={(e) => setNewThreat({...newThreat, threat_type_id: e.target.value})} className="input mt-1" required>
-                <option value="">Select a threat type...</option>
-                {threatTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
-              </select>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Form */}
+      {showEditForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h2 className="text-2xl font-display font-bold">Edit Threat</h2>
+              <button onClick={() => setShowEditForm(false)} className="text-secondary-500 hover:text-secondary-700">
+                <X className="w-6 h-6" />
+              </button>
             </div>
-            <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => setShowCreateForm(false)} className="btn-secondary">Cancel</button>
-              <button type="submit" className="btn-primary">Create Threat</button>
+            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  const response = await api.updateThreat(editingThreat.id, editingThreat);
+                  setThreats(threats.map(threat => 
+                    threat.id === editingThreat.id ? { ...threat, ...response } : threat
+                  ));
+                  setSelectedThreat({ ...selectedThreat, ...response });
+                  setShowEditForm(false);
+                } catch (err) {
+                  console.error('Error updating threat:', err);
+                  alert('Error updating threat. Please try again.');
+                }
+              }} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="edit_name" className="block text-sm font-medium text-secondary-700">Name</label>
+                    <input type="text" id="edit_name" value={editingThreat.name} onChange={(e) => setEditingThreat({...editingThreat, name: e.target.value})} className="input mt-1 w-full" required />
+                  </div>
+                  <div>
+                    <label htmlFor="edit_threat_type" className="block text-sm font-medium text-secondary-700">Threat Type</label>
+                    <select id="edit_threat_type" value={editingThreat.threat_type_id} onChange={(e) => setEditingThreat({...editingThreat, threat_type_id: e.target.value})} className="input mt-1 w-full" required>
+                      <option value="">Select a threat type...</option>
+                      {threatTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="edit_description" className="block text-sm font-medium text-secondary-700">Description</label>
+                  <textarea id="edit_description" value={editingThreat.description} onChange={(e) => setEditingThreat({...editingThreat, description: e.target.value})} className="input mt-1 w-full" rows="4" required />
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                  <button type="button" onClick={() => setShowEditForm(false)} className="btn-secondary">Cancel</button>
+                  <button type="submit" className="btn-primary">Save Changes</button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         </div>
       )}
 
@@ -239,13 +308,31 @@ const Threats = () => {
               <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">{selectedThreat.threat_type_name}</span>
             </div>
             {isAuthenticated && (
-              <button
-                onClick={(e) => handleDeleteThreat(e, selectedThreat.id)}
-                className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
-                title="Delete threat"
-              >
-                <Trash2 className="w-4 h-4 mr-2" /> Delete Threat
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowEditForm(true);
+                    setEditingThreat({
+                      id: selectedThreat.id,
+                      name: selectedThreat.name,
+                      description: selectedThreat.description,
+                      threat_type_id: selectedThreat.threat_type_id
+                    });
+                  }}
+                  className="btn-primary inline-flex items-center"
+                  title="Edit threat"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={(e) => handleDeleteThreat(e, selectedThreat.id)}
+                  className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                  title="Delete threat"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Threat
+                </button>
+              </div>
             )}
           </div>
 

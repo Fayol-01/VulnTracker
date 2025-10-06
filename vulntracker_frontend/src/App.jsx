@@ -13,6 +13,7 @@ import Login from './pages/Login';
 import SignUp from './pages/SignUp';
 import Placeholder from './components/Placeholder';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import ChatBot from './components/ChatBot';
 import './styles/global.css';
 
 // Protected Route component
@@ -65,6 +66,7 @@ const AppRoutes = () => {
                     <Route path="/about" element={<About />} />
                 </Routes>
             </main>
+            <ChatBot />
             <Footer />
         </div>
     );

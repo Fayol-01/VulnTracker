@@ -113,6 +113,25 @@ export const api = {
     }
   },
 
+  updateSoftware: async (id, softwareData) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/software/${id}`, {
+        method: 'PUT',
+        headers: headers,
+        body: JSON.stringify(softwareData)
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Error updating software:', error);
+      throw error;
+    }
+  },
+
   // Patches
   createPatch: async (patchData) => {
     try {
@@ -128,6 +147,25 @@ export const api = {
       return response.json();
     } catch (error) {
       console.error('Error creating patch:', error);
+      throw error;
+    }
+  },
+
+  updatePatch: async (id, patchData) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/patches/${id}`, {
+        method: 'PUT',
+        headers: headers,
+        body: JSON.stringify(patchData)
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Error updating patch:', error);
       throw error;
     }
   },
@@ -200,6 +238,25 @@ export const api = {
       return response.json();
     } catch (error) {
       console.error('Error creating vulnerability:', error);
+      throw error;
+    }
+  },
+
+  updateVulnerability: async (id, vulnData) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/vulnerabilities/${id}`, {
+        method: 'PUT',
+        headers: headers,
+        body: JSON.stringify(vulnData)
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Error updating vulnerability:', error);
       throw error;
     }
   },
@@ -304,6 +361,25 @@ export const api = {
       return response.json();
     } catch (error) {
       console.error('Error creating threat:', error);
+      throw error;
+    }
+  },
+
+  updateThreat: async (id, threatData) => {
+    try {
+      const headers = await getHeaders(true);
+      const response = await fetch(`${API_URL}/threats/${id}`, {
+        method: 'PUT',
+        headers: headers,
+        body: JSON.stringify(threatData)
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Error updating threat:', error);
       throw error;
     }
   },
