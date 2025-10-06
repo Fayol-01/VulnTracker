@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight, ExternalLink, Trash2 } from 'lucide-react';
+import { Plus, Filter, ArrowLeft, ArrowRight, ExternalLink, Trash2, X } from 'lucide-react';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
 
@@ -172,67 +172,78 @@ const Patches = () => {
 
       {/* Create Form */}
       {showCreateForm && (
-        <div className="card p-6">
-          <h2 className="text-xl font-display font-semibold mb-4">Create New Patch</h2>
-          <form onSubmit={handleCreatePatch} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-secondary-700">Vulnerability</label>
-              <select
-                value={newPatch.vulnerability_id}
-                onChange={(e) => setNewPatch({ ...newPatch, vulnerability_id: e.target.value })}
-                className="input mt-1"
-                required
-              >
-                <option value="">Select a vulnerability...</option>
-                {vulnerabilities.map((vuln) => (
-                  <option key={vuln.id} value={vuln.id}>
-                    {vuln.cve_id} - {vuln.summary}
-                  </option>
-                ))}
-              </select>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h2 className="text-2xl font-display font-bold">Create New Patch</h2>
+              <button onClick={() => setShowCreateForm(false)} className="text-secondary-500 hover:text-secondary-700">
+                <X className="w-6 h-6" />
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-secondary-700">Patch URL</label>
-              <input
-                type="url"
-                value={newPatch.url}
-                onChange={(e) => setNewPatch({ ...newPatch, url: e.target.value })}
-                className="input mt-1"
-                required
-                placeholder="https://"
-              />
+            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
+              <form onSubmit={handleCreatePatch} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-secondary-700">Vulnerability</label>
+                    <select
+                      value={newPatch.vulnerability_id}
+                      onChange={(e) => setNewPatch({ ...newPatch, vulnerability_id: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                    >
+                      <option value="">Select a vulnerability...</option>
+                      {vulnerabilities.map((vuln) => (
+                        <option key={vuln.id} value={vuln.id}>
+                          {vuln.cve_id} - {vuln.summary}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-secondary-700">Patch URL</label>
+                    <input
+                      type="url"
+                      value={newPatch.url}
+                      onChange={(e) => setNewPatch({ ...newPatch, url: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                      placeholder="https://"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-secondary-700">Release Date</label>
+                    <input
+                      type="date"
+                      value={newPatch.released}
+                      onChange={(e) => setNewPatch({ ...newPatch, released: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Description</label>
+                  <textarea
+                    className="input mt-1 w-full"
+                    rows="4"
+                    placeholder="Description of the patch"
+                    value={newPatch.description}
+                    onChange={(e) => setNewPatch({...newPatch, description: e.target.value})}
+                    required
+                  ></textarea>
+                </div>
+                {createError && (
+                  <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
+                    {createError}
+                  </div>
+                )}
+                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                  <button type="button" onClick={() => setShowCreateForm(false)} className="btn-secondary">Cancel</button>
+                  <button type="submit" className="btn-primary">Create Patch</button>
+                </div>
+              </form>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-secondary-700">Release Date</label>
-              <input
-                type="date"
-                value={newPatch.released}
-                onChange={(e) => setNewPatch({ ...newPatch, released: e.target.value })}
-                className="input mt-1"
-                required
-              />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-secondary-700">Description</label>
-                <textarea
-                  className="input mt-1 w-full"
-                  rows="3"
-                  placeholder="Description of the patch"
-                  value={newPatch.description}
-                  onChange={(e) => setNewPatch({...newPatch, description: e.target.value})}
-                  required
-                ></textarea>
-            </div>
-            {createError && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
-                {createError}
-              </div>
-            )}
-            <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => setShowCreateForm(false)} className="btn-secondary">Cancel</button>
-              <button type="submit" className="btn-primary">Create Patch</button>
-            </div>
-          </form>
+          </div>
         </div>
       )}
 
@@ -418,63 +429,11 @@ const Patches = () => {
 
       {/* Edit Form */}
       {showEditForm && selectedPatch && (
-        <div className="card p-6">
-          <h2 className="text-xl font-display font-semibold mb-4">Edit Patch</h2>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            handleEditPatch();
-          }} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-secondary-700">Vulnerability</label>
-              <select
-                value={editingPatch.vulnerability_id}
-                onChange={(e) => setEditingPatch({ ...editingPatch, vulnerability_id: e.target.value })}
-                className="input mt-1"
-                required
-              >
-                <option value="">Select a vulnerability...</option>
-                {vulnerabilities.map((vuln) => (
-                  <option key={vuln.id} value={vuln.id}>
-                    {vuln.cve_id} - {vuln.summary}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-secondary-700">Patch URL</label>
-              <input
-                type="url"
-                value={editingPatch.url}
-                onChange={(e) => setEditingPatch({ ...editingPatch, url: e.target.value })}
-                className="input mt-1"
-                required
-                placeholder={selectedPatch.url || "https://"}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-secondary-700">Release Date</label>
-              <input
-                type="date"
-                value={editingPatch.released}
-                onChange={(e) => setEditingPatch({ ...editingPatch, released: e.target.value })}
-                className="input mt-1"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-secondary-700">Description</label>
-              <textarea
-                className="input mt-1 w-full"
-                rows="3"
-                placeholder={selectedPatch.description || "Description of the patch"}
-                value={editingPatch.description}
-                onChange={(e) => setEditingPatch({...editingPatch, description: e.target.value})}
-                required
-              ></textarea>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h2 className="text-2xl font-display font-bold">Edit Patch</h2>
+              <button 
                 onClick={() => {
                   setShowEditForm(false);
                   setEditingPatch({
@@ -484,15 +443,89 @@ const Patches = () => {
                     description: '',
                   });
                 }}
-                className="btn-secondary"
+                className="text-secondary-500 hover:text-secondary-700"
               >
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary">
-                Save Changes
+                <X className="w-6 h-6" />
               </button>
             </div>
-          </form>
+            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                handleEditPatch();
+              }} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-secondary-700">Vulnerability</label>
+                    <select
+                      value={editingPatch.vulnerability_id}
+                      onChange={(e) => setEditingPatch({ ...editingPatch, vulnerability_id: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                    >
+                      <option value="">Select a vulnerability...</option>
+                      {vulnerabilities.map((vuln) => (
+                        <option key={vuln.id} value={vuln.id}>
+                          {vuln.cve_id} - {vuln.summary}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-secondary-700">Patch URL</label>
+                    <input
+                      type="url"
+                      value={editingPatch.url}
+                      onChange={(e) => setEditingPatch({ ...editingPatch, url: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                      placeholder={selectedPatch.url || "https://"}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-secondary-700">Release Date</label>
+                    <input
+                      type="date"
+                      value={editingPatch.released}
+                      onChange={(e) => setEditingPatch({ ...editingPatch, released: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Description</label>
+                  <textarea
+                    className="input mt-1 w-full"
+                    rows="4"
+                    placeholder={selectedPatch.description || "Description of the patch"}
+                    value={editingPatch.description}
+                    onChange={(e) => setEditingPatch({...editingPatch, description: e.target.value})}
+                    required
+                  ></textarea>
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditForm(false);
+                      setEditingPatch({
+                        vulnerability_id: '',
+                        url: '',
+                        released: '',
+                        description: '',
+                      });
+                    }}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
     </div>

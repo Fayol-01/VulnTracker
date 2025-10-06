@@ -119,19 +119,19 @@ const ChatBot = () => {
   
   console.log('ChatBot: User authenticated, rendering chat interface');
   return (
-    <div className="fixed bottom-6 right-6 z-[9999]">
+    <div className="fixed top-0 right-0 z-[9999] h-screen">
       {!isOpen ? (
         <button
           onClick={() => setIsOpen(true)}
-          className="w-14 h-14 bg-primary-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-primary-700 transition-colors"
+          className="absolute top-4 right-4 w-14 h-14 bg-primary-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-primary-700 transition-colors"
           aria-label="Open chat"
         >
           <MessageCircle className="w-6 h-6" />
         </button>
       ) : (
-        <div className="bg-white rounded-lg shadow-xl w-[380px] h-[600px] flex flex-col">
+        <div className="bg-white shadow-xl w-[380px] h-full flex flex-col border-l">
           {/* Header */}
-          <div className="p-4 border-b flex justify-between items-center bg-primary-600 text-white rounded-t-lg">
+          <div className="p-4 border-b flex justify-between items-center bg-primary-600 text-white">
             <h3 className="font-semibold">VulnTracker Assistant</h3>
             <button
               onClick={() => setIsOpen(false)}
@@ -143,7 +143,7 @@ const ChatBot = () => {
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-50">
             {messages.map((message, index) => (
               <div
                 key={index}
@@ -152,10 +152,10 @@ const ChatBot = () => {
                 }`}
               >
                 <div
-                  className={`max-w-[80%] p-3 rounded-lg ${
+                  className={`max-w-[80%] p-3 rounded-lg shadow-sm ${
                     message.role === 'user'
                       ? 'bg-primary-600 text-white'
-                      : 'bg-secondary-100 text-secondary-900'
+                      : 'bg-white text-secondary-900'
                   }`}
                 >
                   <p className="text-sm">{message.content}</p>
@@ -167,11 +167,11 @@ const ChatBot = () => {
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-secondary-100 text-secondary-900 p-3 rounded-lg">
+                <div className="bg-white text-secondary-900 p-3 rounded-lg shadow-sm">
                   <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-secondary-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-secondary-400 rounded-full animate-bounce [animation-delay:-.3s]"></div>
-                    <div className="w-2 h-2 bg-secondary-400 rounded-full animate-bounce [animation-delay:-.5s]"></div>
+                    <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce [animation-delay:-.3s]"></div>
+                    <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce [animation-delay:-.5s]"></div>
                   </div>
                 </div>
               </div>
@@ -179,20 +179,20 @@ const ChatBot = () => {
           </div>
 
           {/* Input Area */}
-          <form onSubmit={handleSendMessage} className="p-4 border-t">
+          <form onSubmit={handleSendMessage} className="p-4 border-t bg-white">
             <div className="flex gap-2">
               <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 placeholder="Type your message..."
-                className="flex-1 input text-sm"
+                className="flex-1 input text-sm focus:ring-primary-500 focus:border-primary-500"
                 disabled={isLoading}
               />
               <button
                 type="submit"
                 disabled={isLoading || !inputMessage.trim()}
-                className="btn-primary p-2"
+                className="btn-primary p-2 rounded-lg hover:bg-primary-700 transition-colors"
                 aria-label="Send message"
               >
                 <Send className="w-5 h-5" />
