@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
+import { Plus, Filter, ArrowLeft, ArrowRight, Trash2, X } from 'lucide-react';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
 
@@ -9,6 +9,7 @@ const Software = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
   const [vendors, setVendors] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -16,7 +17,14 @@ const Software = () => {
   const [newSoftware, setNewSoftware] = useState({
     name: '',
     vendor_id: '',
-    version: ''
+    version: '',
+    description: '',
+  });
+  const [editingSoftware, setEditingSoftware] = useState({
+    name: '',
+    vendor_id: '',
+    version: '',
+    description: '',
   });
 
   useEffect(() => {
@@ -64,10 +72,33 @@ const Software = () => {
       setNewSoftware({
         name: '',
         vendor_id: '',
-        version: ''
+        version: '',
+        description: '',
       });
     } catch (err) {
       console.error('Error creating software:', err);
+    }
+  };
+
+  const handleEditSoftware = async () => {
+    try {
+      const response = await api.updateSoftware(selectedSoftware.id, editingSoftware);
+      setSoftware(software.map(item => 
+        item.id === selectedSoftware.id 
+          ? { ...response, vendor_name: vendors.find(v => v.id === response.vendor_id)?.name } 
+          : item
+      ));
+      setSelectedSoftware({ ...response, vendor_name: vendors.find(v => v.id === response.vendor_id)?.name });
+      setShowEditForm(false);
+      setEditingSoftware({
+        name: '',
+        vendor_id: '',
+        version: '',
+        description: '',
+      });
+    } catch (err) {
+      console.error('Error updating software:', err);
+      alert('Failed to update software. Please try again.');
     }
   };
 
@@ -156,67 +187,89 @@ const Software = () => {
 
       {/* Create Form */}
       {showCreateForm && (
-        <div className="card p-6">
-          <h2 className="text-xl font-display font-semibold mb-4">Add New Software</h2>
-          <form onSubmit={handleCreateSoftware} className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-secondary-700">
-                Software Name
-              </label>
-              <input
-                type="text"
-                id="name"
-                value={newSoftware.name}
-                onChange={(e) => setNewSoftware({ ...newSoftware, name: e.target.value })}
-                className="input mt-1"
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="vendor" className="block text-sm font-medium text-secondary-700">
-                Vendor
-              </label>
-              <select
-                id="vendor"
-                value={newSoftware.vendor_id}
-                onChange={(e) => setNewSoftware({ ...newSoftware, vendor_id: e.target.value })}
-                className="input mt-1"
-                required
-              >
-                <option value="">Select a vendor...</option>
-                {vendors.map((vendor) => (
-                  <option key={vendor.id} value={vendor.id}>
-                    {vendor.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="version" className="block text-sm font-medium text-secondary-700">
-                Version
-              </label>
-              <input
-                type="text"
-                id="version"
-                value={newSoftware.version}
-                onChange={(e) => setNewSoftware({ ...newSoftware, version: e.target.value })}
-                className="input mt-1"
-                placeholder="e.g., 1.0.0"
-              />
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowCreateForm(false)}
-                className="btn-secondary"
-              >
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary">
-                Add Software
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h2 className="text-2xl font-display font-bold">Add New Software</h2>
+              <button onClick={() => setShowCreateForm(false)} className="text-secondary-500 hover:text-secondary-700">
+                <X className="w-6 h-6" />
               </button>
             </div>
-          </form>
+            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
+              <form onSubmit={handleCreateSoftware} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="name" className="block text-sm font-medium text-secondary-700">
+                      Software Name
+                    </label>
+                    <input
+                      type="text"
+                      id="name"
+                      value={newSoftware.name}
+                      onChange={(e) => setNewSoftware({ ...newSoftware, name: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="vendor" className="block text-sm font-medium text-secondary-700">
+                      Vendor
+                    </label>
+                    <select
+                      id="vendor"
+                      value={newSoftware.vendor_id}
+                      onChange={(e) => setNewSoftware({ ...newSoftware, vendor_id: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                    >
+                      <option value="">Select a vendor...</option>
+                      {vendors.map((vendor) => (
+                        <option key={vendor.id} value={vendor.id}>
+                          {vendor.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="version" className="block text-sm font-medium text-secondary-700">
+                      Version
+                    </label>
+                    <input
+                      type="text"
+                      id="version"
+                      value={newSoftware.version}
+                      onChange={(e) => setNewSoftware({ ...newSoftware, version: e.target.value })}
+                      className="input mt-1 w-full"
+                      placeholder="e.g., 1.0.0"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Description</label>
+                  <textarea
+                    className="input mt-1 w-full"
+                    rows="4"
+                    placeholder="Description of the software"
+                    value={newSoftware.description}
+                    onChange={(e) => setNewSoftware({...newSoftware, description: e.target.value})}
+                    required
+                  ></textarea>
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Add Software
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
 
@@ -350,18 +403,131 @@ const Software = () => {
               </span>
             </div>
           </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm text-secondary-600 mb-1">
+                {selectedSoftware.description}
+              </h2>
+            </div>
+          </div>
 
           <div className="flex justify-end gap-3">
             {isAuthenticated && (
-              <button
-                onClick={(e) => handleDeleteSoftware(e, selectedSoftware.id)}
-                className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
-                title="Delete software"
-              >
-                <Trash2 className="w-4 h-4 mr-2" /> Delete Software
-              </button>
+              <>
+                <button
+                  onClick={(e) => handleDeleteSoftware(e, selectedSoftware.id)}
+                  className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
+                  title="Delete software"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Software
+                </button>
+                <button 
+                  className="btn-primary"
+                  onClick={() => {
+                    setEditingSoftware({
+                      name: selectedSoftware.name,
+                      vendor_id: selectedSoftware.vendor_id,
+                      version: selectedSoftware.version || '',
+                      description: selectedSoftware.description || ''
+                    });
+                    setShowEditForm(true);
+                  }}
+                >
+                  Edit Software
+                </button>
+              </>
             )}
-            <button className="btn-primary">Edit Software</button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Form */}
+      {showEditForm && selectedSoftware && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h2 className="text-2xl font-display font-bold">Edit Software</h2>
+              <button onClick={() => setShowEditForm(false)} className="text-secondary-500 hover:text-secondary-700">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                handleEditSoftware();
+              }} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="edit-name" className="block text-sm font-medium text-secondary-700">
+                      Software Name
+                    </label>
+                    <input
+                      type="text"
+                      id="edit-name"
+                      value={editingSoftware.name}
+                      onChange={(e) => setEditingSoftware({ ...editingSoftware, name: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-vendor" className="block text-sm font-medium text-secondary-700">
+                      Vendor
+                    </label>
+                    <select
+                      id="edit-vendor"
+                      value={editingSoftware.vendor_id}
+                      onChange={(e) => setEditingSoftware({ ...editingSoftware, vendor_id: e.target.value })}
+                      className="input mt-1 w-full"
+                      required
+                    >
+                      <option value="">Select a vendor...</option>
+                      {vendors.map((vendor) => (
+                        <option key={vendor.id} value={vendor.id}>
+                          {vendor.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="edit-version" className="block text-sm font-medium text-secondary-700">
+                      Version
+                    </label>
+                    <input
+                      type="text"
+                      id="edit-version"
+                      value={editingSoftware.version}
+                      onChange={(e) => setEditingSoftware({ ...editingSoftware, version: e.target.value })}
+                      className="input mt-1 w-full"
+                      placeholder="e.g., 1.0.0"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Description</label>
+                  <textarea
+                    className="input mt-1 w-full"
+                    rows="4"
+                    placeholder="Description of the software"
+                    value={editingSoftware.description}
+                    onChange={(e) => setEditingSoftware({...editingSoftware, description: e.target.value})}
+                    required
+                  ></textarea>
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditForm(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

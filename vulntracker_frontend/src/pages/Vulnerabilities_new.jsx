@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, Filter, ArrowLeft, ArrowRight, Plus, X } from 'lucide-react';
 import { api } from '../services/api';
+import FilterPanel from '../components/FilterPanel';
 
 const Vulnerabilities = () => {
   const [vulnerabilities, setVulnerabilities] = useState([]);
+  const [filteredVulnerabilities, setFilteredVulnerabilities] = useState([]);
   const [selectedVuln, setSelectedVuln] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    cveId: '',
+    severity: '',
+    software: '',
+    summary: ''
+  });
   const [showAddForm, setShowAddForm] = useState(false);
   const [softwareList, setSoftwareList] = useState([]);
   const [threatList, setThreatList] = useState([]);
@@ -20,8 +29,52 @@ const Vulnerabilities = () => {
     status: 'Active',
     software_id: '',
     cvss_score: '',
-    threats: [], // Array of threat IDs
+    threats: [],
+    description: '',
   });
+
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingVulnerability, setEditingVulnerability] = useState({
+    cve_id: '',
+    name: '',
+    summary: '',
+    severity: 'Low',
+    status: 'Active',
+    software_id: '',
+    cvss_score: '',
+    threats: [],
+    description: '',
+  });
+
+  const applyFilters = (currentFilters) => {
+    let filtered = [...vulnerabilities];
+    
+    if (currentFilters.cveId) {
+      filtered = filtered.filter(vuln => 
+        vuln.cve_id.toLowerCase().includes(currentFilters.cveId.toLowerCase())
+      );
+    }
+    
+    if (currentFilters.severity) {
+      filtered = filtered.filter(vuln => 
+        vuln.severity.toLowerCase() === currentFilters.severity.toLowerCase()
+      );
+    }
+    
+    if (currentFilters.software) {
+      filtered = filtered.filter(vuln => 
+        vuln.software?.name.toLowerCase().includes(currentFilters.software.toLowerCase())
+      );
+    }
+
+    if (currentFilters.summary) {
+      filtered = filtered.filter(vuln => 
+        vuln.summary.toLowerCase().includes(currentFilters.summary.toLowerCase())
+      );
+    }
+    
+    setFilteredVulnerabilities(filtered);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -31,10 +84,14 @@ const Vulnerabilities = () => {
           api.getVulnerabilities(),
           api.getSoftware(),
           api.getThreats()
+          
         ]);
         setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
         setSoftwareList(Array.isArray(software) ? software : []);
         setThreatList(Array.isArray(threats) ? threats : []);
+        const vulnsArray = Array.isArray(vulnsData) ? vulnsData : [];
+        setVulnerabilities(vulnsArray);
+        setFilteredVulnerabilities(vulnsArray);
       } catch (err) {
         setError('Failed to fetch data');
         console.error('Error:', err);
@@ -75,6 +132,7 @@ const Vulnerabilities = () => {
         software_id: '',
         cvss_score: '',
         threats: [],
+        description: '',
       });
     } catch (error) {
       console.error('Error creating vulnerability:', error);
@@ -93,6 +151,38 @@ const Vulnerabilities = () => {
       setSelectedVuln(null); // Clear selected vulnerability if it was deleted
     } catch (error) {
       console.error('Error deleting vulnerability:', error);
+    }
+  };
+
+  const handleEditVulnerability = async () => {
+    try {
+      const { threats, ...vulnData } = editingVulnerability;
+      const updatedVuln = await api.updateVulnerability(selectedVuln.id, vulnData);
+      
+      // Update the threats associations
+      // First, get current threats to calculate which ones to add/remove
+      const currentThreats = selectedVuln.threats?.map(t => t.id) || [];
+      const threatsToAdd = threats.filter(t => !currentThreats.includes(t));
+      const threatsToRemove = currentThreats.filter(t => !threats.includes(t));
+      
+      // Link new threats
+      await Promise.all(
+        threatsToAdd.map(threatId => 
+          api.linkVulnerabilityThreat(updatedVuln.id, threatId)
+        )
+      );
+      
+      // Refresh vulnerabilities list
+      const vulnsData = await api.getVulnerabilities();
+      setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
+      setFilteredVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
+      
+      // Update selected vulnerability and close form
+      setSelectedVuln(vulnsData.find(v => v.id === updatedVuln.id));
+      setShowEditForm(false);
+    } catch (error) {
+      console.error('Error updating vulnerability:', error);
+      alert('Failed to update vulnerability. Please try again.');
     }
   };
 
@@ -158,23 +248,62 @@ const Vulnerabilities = () => {
             <Plus className="w-4 h-4 mr-2" />
             Add Vulnerability
           </button>
-          <button className="btn-secondary inline-flex items-center">
+          {/* <button className="btn-secondary inline-flex items-center">
             <Filter className="w-4 h-4 mr-2" />
             Filter
-          </button>
+          </button> */}
+          <FilterPanel
+            filters={filters}
+            setFilters={setFilters}
+            isOpen={isFilterOpen}
+            setIsOpen={setIsFilterOpen}
+            applyFilters={applyFilters}
+            filterOptions={[
+              {
+                key: 'cveId',
+                label: 'CVE ID',
+                type: 'text'
+              },
+              {
+                key: 'severity',
+                label: 'Severity',
+                type: 'select',
+                options: [
+                  { value: 'critical', label: 'Critical' },
+                  { value: 'high', label: 'High' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'low', label: 'Low' }
+                ]
+              },
+              {
+                key: 'software',
+                label: 'Software',
+                type: 'text'
+              },
+              {
+                key: 'summary',
+                label: 'Summary',
+                type: 'text'
+              }
+            ]}
+          />
         </div>
+
+
       </div>
 
       {/* Add Vulnerability Form */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
               <h2 className="text-2xl font-display font-bold">Add New Vulnerability</h2>
               <button onClick={() => setShowAddForm(false)} className="text-secondary-500 hover:text-secondary-700">
                 <X className="w-6 h-6" />
               </button>
             </div>
+            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
+            
             <form onSubmit={handleCreateVulnerability} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -259,6 +388,17 @@ const Vulnerabilities = () => {
                 ></textarea>
               </div>
               <div>
+                <label className="block text-sm font-medium text-secondary-700">Description</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="3"
+                  placeholder="Description of the vulnerability"
+                  value={newVulnerability.description}
+                  onChange={(e) => setNewVulnerability({...newVulnerability, description: e.target.value})}
+                  required
+                ></textarea>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-secondary-700">Associated Threats</label>
                 <div className="mt-2 space-y-2">
                   {threatList.map((threat) => (
@@ -298,6 +438,7 @@ const Vulnerabilities = () => {
                 </button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}
@@ -317,7 +458,7 @@ const Vulnerabilities = () => {
               </tr>
             </thead>
             <tbody>
-              {currentVulnerabilities.map((vuln) => (
+              {filteredVulnerabilities.map((vuln) => (
                 <tr
                   key={vuln.id}
                   onClick={() => setSelectedVuln(vuln)}
@@ -455,6 +596,13 @@ const Vulnerabilities = () => {
               </div>
             </div>
           </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm text-secondary-600 mb-1">
+                {selectedVuln.description}
+              </h2>
+            </div>
+          </div>
 
           {/* Associated Threats */}
           {selectedVuln.threats && selectedVuln.threats.length > 0 && (
@@ -511,7 +659,172 @@ const Vulnerabilities = () => {
             >
               Delete Vulnerability
             </button>
-            <button className="btn-primary">Report an Issue</button>
+            <button
+              onClick={() => {
+                setEditingVulnerability({
+                  ...selectedVuln,
+                  software_id: selectedVuln.software_id,
+                  threats: selectedVuln.threats?.map(t => t.id) || [],
+                });
+                setShowEditForm(true);
+              }}
+              className="btn-primary"
+            >
+              Edit Vulnerability
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Form */}
+      {showEditForm && selectedVuln && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h2 className="text-2xl font-display font-bold">Edit Vulnerability</h2>
+              <button onClick={() => setShowEditForm(false)} className="text-secondary-500 hover:text-secondary-700">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              handleEditVulnerability();
+            }} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">CVE ID</label>
+                  <input
+                    type="text"
+                    className="input mt-1 w-full"
+                    placeholder={selectedVuln.cve_id}
+                    value={editingVulnerability.cve_id}
+                    onChange={(e) => setEditingVulnerability({...editingVulnerability, cve_id: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Software</label>
+                  <select
+                    className="input mt-1 w-full"
+                    value={editingVulnerability.software_id}
+                    onChange={(e) => setEditingVulnerability({...editingVulnerability, software_id: e.target.value})}
+                    required
+                  >
+                    <option value="">Select Software</option>
+                    {softwareList.map((sw) => (
+                      <option key={sw.id} value={sw.id}>{sw.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* <div>
+                  <label className="block text-sm font-medium text-secondary-700">Name</label>
+                  <input
+                    type="text"
+                    className="input mt-1 w-full"
+                    placeholder={selectedVuln.name}
+                    value={editingVulnerability.name}
+                    onChange={(e) => setEditingVulnerability({...editingVulnerability, name: e.target.value})}
+                    required
+                  />
+                </div> */}
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">CVSS Score</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
+                    className="input mt-1 w-full"
+                    placeholder={selectedVuln.cvss_score}
+                    value={editingVulnerability.cvss_score}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value);
+                      if (!isNaN(value) && value >= 0 && value <= 10) {
+                        setEditingVulnerability({...editingVulnerability, cvss_score: value});
+                      }
+                    }}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700">Severity</label>
+                  <select
+                    className="input mt-1 w-full"
+                    value={editingVulnerability.severity}
+                    onChange={(e) => setEditingVulnerability({...editingVulnerability, severity: e.target.value})}
+                    required
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-700">Summary</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="3"
+                  placeholder={selectedVuln.summary}
+                  value={editingVulnerability.summary}
+                  onChange={(e) => setEditingVulnerability({...editingVulnerability, summary: e.target.value})}
+                  required
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-700">Description</label>
+                <textarea
+                  className="input mt-1 w-full"
+                  rows="3"
+                  placeholder={selectedVuln.description}
+                  value={editingVulnerability.description}
+                  onChange={(e) => setEditingVulnerability({...editingVulnerability, description: e.target.value})}
+                  required
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-secondary-700">Associated Threats</label>
+                <div className="mt-2 space-y-2">
+                  {threatList.map((threat) => (
+                    <div key={threat.id} className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`edit-threat-${threat.id}`}
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                        checked={editingVulnerability.threats.includes(threat.id)}
+                        onChange={(e) => {
+                          const threats = e.target.checked 
+                            ? [...editingVulnerability.threats, threat.id]
+                            : editingVulnerability.threats.filter(id => id !== threat.id);
+                          setEditingVulnerability({...editingVulnerability, threats});
+                        }}
+                      />
+                      <label htmlFor={`edit-threat-${threat.id}`} className="ml-3">
+                        <span className="block text-sm font-medium text-secondary-900">{threat.name}</span>
+                        {threat.threat_type && (
+                          <span className="text-xs text-secondary-500">{threat.threat_type.name}</span>
+                        )}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowEditForm(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Save Changes
+                </button>
+              </div>
+            </form>
+            </div>
           </div>
         </div>
       )}

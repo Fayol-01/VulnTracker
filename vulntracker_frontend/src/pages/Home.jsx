@@ -172,29 +172,31 @@ const Home = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="card bg-gradient-to-r from-primary-600 to-primary-700 p-8 md:p-12 text-white text-center">
-        <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-          Ready to Secure Your Applications?
-        </h2>
-        <p className="text-primary-100 text-lg mb-8 max-w-2xl mx-auto">
-          Join thousands of security professionals who trust VulnTracker for their
-          vulnerability management needs.
-        </p>
-        <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-          <button
-            onClick={() => navigate('/signup')}
-            className="btn bg-white text-primary-600 hover:bg-primary-50 focus:ring-white w-full sm:w-auto"
-          >
-            Get Started
-          </button>
-          <button
-            onClick={() => navigate('/contact')}
-            className="btn border border-white text-white hover:bg-primary-500 focus:ring-white w-full sm:w-auto"
-          >
-            Contact Sales
-          </button>
-        </div>
-      </section>
+      {!isAuthenticated && (
+        <section className="card bg-gradient-to-r from-primary-600 to-primary-700 p-8 md:p-12 text-white text-center">
+          <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
+            Ready to Secure Your Applications?
+          </h2>
+          <p className="text-primary-100 text-lg mb-8 max-w-2xl mx-auto">
+            Join thousands of security professionals who trust VulnTracker for their
+            vulnerability management needs.
+          </p>
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
+            <button
+              onClick={() => navigate('/signup')}
+              className="btn bg-white text-primary-600 hover:bg-primary-50 focus:ring-white w-full sm:w-auto"
+            >
+              Get Started
+            </button>
+            <button
+              onClick={() => navigate('/contact')}
+              className="btn border border-white text-white hover:bg-primary-500 focus:ring-white w-full sm:w-auto"
+            >
+              Contact Sales
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 };
