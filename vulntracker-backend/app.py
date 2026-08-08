@@ -53,9 +53,16 @@ limiter = Limiter(
     default_limits=["2000 per day", "500 per hour"]
 )
 
+# Configure allowed origins for CORS
+allowed_origins = ["http://localhost:5173", "http://localhost:3000"]
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    allowed_origins.append(frontend_url)
+    allowed_origins.append(frontend_url.rstrip('/'))
+
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["http://localhost:5173"],
+        "origins": allowed_origins,
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
