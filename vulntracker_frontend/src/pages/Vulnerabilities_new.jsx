@@ -1,835 +1,294 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Filter, ArrowLeft, ArrowRight, Plus, X } from 'lucide-react';
+import { Plus, ChevronRight, Filter } from 'lucide-react';
 import { api } from '../services/api';
-import FilterPanel from '../components/FilterPanel';
+import Drawer from '../components/Drawer';
 
-const Vulnerabilities = () => {
+function CvssBar({ score }) {
+  const pct  = Math.min(100, (score / 10) * 100);
+  const segs = 5;
+  const filled = Math.round((pct / 100) * segs);
+  let colorClass = 'lo';
+  if (score >= 9.0) colorClass = 'cr';
+  else if (score >= 7.0) colorClass = 'hi';
+  else if (score >= 4.0) colorClass = 'me';
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`font-mono font-bold text-code-sm ${colorClass === 'cr' ? 'text-error' : colorClass === 'hi' ? 'text-tertiary-container' : colorClass === 'me' ? 'text-tertiary-fixed' : 'text-primary'}`}>
+        {score?.toFixed(1) ?? '—'}
+      </span>
+      <div className="flex">
+        {Array.from({ length: segs }, (_, i) => (
+          <span key={i} className={`cvss-seg ${i < filled ? colorClass : ''}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const SEV = { Critical: 'cr', High: 'hi', Medium: 'me', Low: 'lo' };
+const BLANK_VULN = { cve_id: '', name: '', summary: '', severity: 'Low', status: 'Active', software_id: '', cvss_score: '', threats: [], description: '' };
+
+export default function Vulnerabilities() {
   const [vulnerabilities, setVulnerabilities] = useState([]);
-  const [filteredVulnerabilities, setFilteredVulnerabilities] = useState([]);
-  const [selectedVuln, setSelectedVuln] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filters, setFilters] = useState({
-    cveId: '',
-    severity: '',
-    software: '',
-    summary: ''
-  });
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [softwareList, setSoftwareList] = useState([]);
-  const [threatList, setThreatList] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [newVulnerability, setNewVulnerability] = useState({
-    cve_id: '',
-    name: '',
-    summary: '',
-    severity: 'Low',
-    status: 'Active',
-    software_id: '',
-    cvss_score: '',
-    threats: [],
-    description: '',
-  });
-
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [editingVulnerability, setEditingVulnerability] = useState({
-    cve_id: '',
-    name: '',
-    summary: '',
-    severity: 'Low',
-    status: 'Active',
-    software_id: '',
-    cvss_score: '',
-    threats: [],
-    description: '',
-  });
-
-  const applyFilters = (currentFilters) => {
-    let filtered = [...vulnerabilities];
-    
-    if (currentFilters.cveId) {
-      filtered = filtered.filter(vuln => 
-        vuln.cve_id.toLowerCase().includes(currentFilters.cveId.toLowerCase())
-      );
-    }
-    
-    if (currentFilters.severity) {
-      filtered = filtered.filter(vuln => 
-        vuln.severity.toLowerCase() === currentFilters.severity.toLowerCase()
-      );
-    }
-    
-    if (currentFilters.software) {
-      filtered = filtered.filter(vuln => 
-        vuln.software?.name.toLowerCase().includes(currentFilters.software.toLowerCase())
-      );
-    }
-
-    if (currentFilters.summary) {
-      filtered = filtered.filter(vuln => 
-        vuln.summary.toLowerCase().includes(currentFilters.summary.toLowerCase())
-      );
-    }
-    
-    setFilteredVulnerabilities(filtered);
-  };
+  const [softwareList, setSoftwareList]       = useState([]);
+  const [threatList, setThreatList]           = useState([]);
+  const [expandedId, setExpandedId]           = useState(null);
+  
+  // Drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isEditing, setIsEditing]   = useState(false);
+  const [formData, setFormData]     = useState({ ...BLANK_VULN });
+  const [loadingForm, setLoadingForm] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setIsLoading(true);
-        const [vulnsData, software, threats] = await Promise.all([
-          api.getVulnerabilities(),
-          api.getSoftware(),
-          api.getThreats()
-          
-        ]);
+        const [vulnsData, software, threats] = await Promise.all([api.getVulnerabilities(), api.getSoftware(), api.getThreats()]);
         setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
         setSoftwareList(Array.isArray(software) ? software : []);
         setThreatList(Array.isArray(threats) ? threats : []);
-        const vulnsArray = Array.isArray(vulnsData) ? vulnsData : [];
-        setVulnerabilities(vulnsArray);
-        setFilteredVulnerabilities(vulnsArray);
-      } catch (err) {
-        setError('Failed to fetch data');
-        console.error('Error:', err);
-      } finally {
-        setIsLoading(false);
-      }
+      } catch { console.error('Failed to fetch data'); }
     };
-
     fetchData();
   }, []);
 
-  const handleCreateVulnerability = async (e) => {
+  const openCreate = () => {
+    setFormData({ ...BLANK_VULN });
+    setIsEditing(false);
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (vuln) => {
+    setFormData({
+      ...vuln,
+      software_id: vuln.software_id || '',
+      threats: vuln.threats?.map(t => t.id) || []
+    });
+    setIsEditing(true);
+    setDrawerOpen(true);
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
+    setLoadingForm(true);
     try {
-      // Create vulnerability first
-      const { threats, ...vulnData } = newVulnerability;
-      const createdVuln = await api.createVulnerability(vulnData);
-      
-      // Link selected threats
-      await Promise.all(
-        threats.map(threatId => 
-          api.linkVulnerabilityThreat(createdVuln.id, threatId)
-        )
-      );
-
-      // Refresh vulnerabilities list
-      const vulnsData = await api.getVulnerabilities();
-      setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
-      
-      // Reset form
-      setShowAddForm(false);
-      setNewVulnerability({
-        cve_id: '',
-        name: '',
-        summary: '',
-        severity: 'Low',
-        status: 'Active',
-        software_id: '',
-        cvss_score: '',
-        threats: [],
-        description: '',
-      });
-    } catch (error) {
-      console.error('Error creating vulnerability:', error);
-    }
+      const { threats, ...vulnData } = formData;
+      if (isEditing) {
+        const updated = await api.updateVulnerability(formData.id, vulnData);
+        const currentThreats = vulnerabilities.find(v => v.id === formData.id)?.threats?.map(t => t.id) || [];
+        const toAdd = threats.filter(t => !currentThreats.includes(t));
+        await Promise.all(toAdd.map(id => api.linkVulnerabilityThreat(updated.id, id)));
+      } else {
+        const created = await api.createVulnerability(vulnData);
+        await Promise.all(threats.map(id => api.linkVulnerabilityThreat(created.id, id)));
+      }
+      const data = await api.getVulnerabilities();
+      setVulnerabilities(Array.isArray(data) ? data : []);
+      setDrawerOpen(false);
+    } catch { alert('Failed to save vulnerability'); }
+    finally { setLoadingForm(false); }
   };
 
-  const handleDeleteVulnerability = async (vulnId) => {
-    if (!window.confirm('Are you sure you want to delete this vulnerability?')) {
-      return;
-    }
-
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this vulnerability record?')) return;
     try {
-      await api.deleteVulnerability(vulnId);
-      const vulnsData = await api.getVulnerabilities();
-      setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
-      setSelectedVuln(null); // Clear selected vulnerability if it was deleted
-    } catch (error) {
-      console.error('Error deleting vulnerability:', error);
-    }
+      await api.deleteVulnerability(id);
+      setVulnerabilities(p => p.filter(v => v.id !== id));
+      if (expandedId === id) setExpandedId(null);
+    } catch { alert('Error deleting'); }
   };
 
-  const handleEditVulnerability = async () => {
-    try {
-      const { threats, ...vulnData } = editingVulnerability;
-      const updatedVuln = await api.updateVulnerability(selectedVuln.id, vulnData);
-      
-      // Update the threats associations
-      // First, get current threats to calculate which ones to add/remove
-      const currentThreats = selectedVuln.threats?.map(t => t.id) || [];
-      const threatsToAdd = threats.filter(t => !currentThreats.includes(t));
-      const threatsToRemove = currentThreats.filter(t => !threats.includes(t));
-      
-      // Link new threats
-      await Promise.all(
-        threatsToAdd.map(threatId => 
-          api.linkVulnerabilityThreat(updatedVuln.id, threatId)
-        )
-      );
-      
-      // Refresh vulnerabilities list
-      const vulnsData = await api.getVulnerabilities();
-      setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
-      setFilteredVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
-      
-      // Update selected vulnerability and close form
-      setSelectedVuln(vulnsData.find(v => v.id === updatedVuln.id));
-      setShowEditForm(false);
-    } catch (error) {
-      console.error('Error updating vulnerability:', error);
-      alert('Failed to update vulnerability. Please try again.');
-    }
-  };
-
-  const getSeverityClass = (severity) => {
-    const classes = {
-      'Critical': 'bg-red-100 text-red-800',
-      'High': 'bg-orange-100 text-orange-800',
-      'Medium': 'bg-yellow-100 text-yellow-800',
-      'Low': 'bg-blue-100 text-blue-800'
-    };
-    return classes[severity] || 'bg-gray-100 text-gray-800';
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="bg-red-50 text-red-500 p-4 rounded-lg">
-          {error}
-        </div>
-      </div>
-    );
-  }
-
-  // Calculate pagination values
-  const totalItems = vulnerabilities.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentVulnerabilities = vulnerabilities.slice(startIndex, endIndex);
-
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-    }
-  };
-
-  const handleItemsPerPageChange = (e) => {
-    const newItemsPerPage = parseInt(e.target.value);
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1); // Reset to first page when changing items per page
+  const toggleRow = (id) => {
+    setExpandedId(expandedId === id ? null : id);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-display font-bold text-secondary-900">
-          Vulnerabilities
-        </h1>
-        <div className="flex gap-2">
-          <button 
-            className="btn-primary inline-flex items-center"
-            onClick={() => setShowAddForm(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Vulnerability
+    <div className="p-container-margin space-y-unit-4">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-grid-line pb-unit-4">
+        <h1 className="page-title">Vulnerability Ledger</h1>
+        <div className="flex gap-unit-4">
+          <button className="btn-outline">
+            <Filter size={14} /> FILTER
           </button>
-          {/* <button className="btn-secondary inline-flex items-center">
-            <Filter className="w-4 h-4 mr-2" />
-            Filter
-          </button> */}
-          <FilterPanel
-            filters={filters}
-            setFilters={setFilters}
-            isOpen={isFilterOpen}
-            setIsOpen={setIsFilterOpen}
-            applyFilters={applyFilters}
-            filterOptions={[
-              {
-                key: 'cveId',
-                label: 'CVE ID',
-                type: 'text'
-              },
-              {
-                key: 'severity',
-                label: 'Severity',
-                type: 'select',
-                options: [
-                  { value: 'critical', label: 'Critical' },
-                  { value: 'high', label: 'High' },
-                  { value: 'medium', label: 'Medium' },
-                  { value: 'low', label: 'Low' }
-                ]
-              },
-              {
-                key: 'software',
-                label: 'Software',
-                type: 'text'
-              },
-              {
-                key: 'summary',
-                label: 'Summary',
-                type: 'text'
-              }
-            ]}
-          />
+          <button className="btn-primary px-unit-4 w-auto py-unit-2" onClick={openCreate}>
+            <Plus size={14} /> ADD ENTRY
+          </button>
         </div>
-
-
       </div>
 
-      {/* Add Vulnerability Form */}
-      {showAddForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <h2 className="text-2xl font-display font-bold">Add New Vulnerability</h2>
-              <button onClick={() => setShowAddForm(false)} className="text-secondary-500 hover:text-secondary-700">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
-            
-            <form onSubmit={handleCreateVulnerability} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">CVE ID</label>
-                  <input
-                    type="text"
-                    className="input mt-1 w-full"
-                    placeholder="CVE-YYYY-NNNN"
-                    value={newVulnerability.cve_id}
-                    onChange={(e) => setNewVulnerability({...newVulnerability, cve_id: e.target.value})}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">Software</label>
-                  <select
-                    className="input mt-1 w-full"
-                    value={newVulnerability.software_id}
-                    onChange={(e) => setNewVulnerability({...newVulnerability, software_id: e.target.value})}
-                    required
-                  >
-                    <option value="">Select Software</option>
-                    {softwareList.map((sw) => (
-                      <option key={sw.id} value={sw.id}>{sw.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">Name</label>
-                  <input
-                    type="text"
-                    className="input mt-1 w-full"
-                    placeholder="Vulnerability Name"
-                    value={newVulnerability.name}
-                    onChange={(e) => setNewVulnerability({...newVulnerability, name: e.target.value})}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">CVSS Score</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="10"
-                    className="input mt-1 w-full"
-                    placeholder="0.0 - 10.0"
-                    value={newVulnerability.cvss_score}
-                    onChange={(e) => {
-                      const value = parseFloat(e.target.value);
-                      if (!isNaN(value) && value >= 0 && value <= 10) {
-                        setNewVulnerability({...newVulnerability, cvss_score: value});
-                      }
-                    }}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">Severity</label>
-                  <select
-                    className="input mt-1 w-full"
-                    value={newVulnerability.severity}
-                    onChange={(e) => setNewVulnerability({...newVulnerability, severity: e.target.value})}
-                    required
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                    <option value="Critical">Critical</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700">Summary</label>
-                <textarea
-                  className="input mt-1 w-full"
-                  rows="3"
-                  placeholder="Summary of the vulnerability"
-                  value={newVulnerability.summary}
-                  onChange={(e) => setNewVulnerability({...newVulnerability, summary: e.target.value})}
-                  required
-                ></textarea>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700">Description</label>
-                <textarea
-                  className="input mt-1 w-full"
-                  rows="3"
-                  placeholder="Description of the vulnerability"
-                  value={newVulnerability.description}
-                  onChange={(e) => setNewVulnerability({...newVulnerability, description: e.target.value})}
-                  required
-                ></textarea>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700">Associated Threats</label>
-                <div className="mt-2 space-y-2">
-                  {threatList.map((threat) => (
-                    <div key={threat.id} className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id={`threat-${threat.id}`}
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                        checked={newVulnerability.threats.includes(threat.id)}
-                        onChange={(e) => {
-                          const threats = e.target.checked 
-                            ? [...newVulnerability.threats, threat.id]
-                            : newVulnerability.threats.filter(id => id !== threat.id);
-                          setNewVulnerability({...newVulnerability, threats});
-                        }}
-                      />
-                      <label htmlFor={`threat-${threat.id}`} className="ml-3">
-                        <span className="block text-sm font-medium text-secondary-900">{threat.name}</span>
-                        {threat.threat_type && (
-                          <span className="text-xs text-secondary-500">{threat.threat_type.name}</span>
-                        )}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowAddForm(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Create Vulnerability
-                </button>
-              </div>
-            </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Data Table */}
-      <div className="card overflow-hidden">
+      {/* Table */}
+      <div className="border border-grid-line bg-surface-container-lowest overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="vt-table">
             <thead>
-              <tr className="border-b border-secondary-200">
-                <th className="table-header">CVE ID</th>
-                <th className="table-header">Software</th>
-                <th className="table-header">Vendor</th>
-                <th className="table-header">CVSS Score</th>
-                <th className="table-header">Severity</th>
-                <th className="table-header">Published</th>
+              <tr>
+                <th className="w-10 text-center"></th>
+                <th className="w-32">CVE ID</th>
+                <th>PRODUCT</th>
+                <th>VENDOR</th>
+                <th className="w-20 text-center">SEVERITY</th>
+                <th className="w-32">CVSS V3</th>
+                <th className="w-24">PUBLISHED</th>
+                <th className="w-24">STATUS</th>
               </tr>
             </thead>
             <tbody>
-              {filteredVulnerabilities.map((vuln) => (
-                <tr
-                  key={vuln.id}
-                  onClick={() => setSelectedVuln(vuln)}
-                  className="border-b border-secondary-200 hover:bg-secondary-50 cursor-pointer transition-colors"
-                >
-                  <td className="table-cell font-medium text-primary-600">
-                    {vuln.cve_id}
-                  </td>
-                  <td className="table-cell">
-                    {vuln.software?.name}
-                    {vuln.software?.version && ` (${vuln.software.version})`}
-                  </td>
-                  <td className="table-cell">{vuln.software?.vendor?.name}</td>
-                  <td className="table-cell font-medium">
-                    {vuln.cvss_score?.toFixed(1)}
-                  </td>
-                  <td className="table-cell">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSeverityClass(vuln.severity)}`}>
-                      {vuln.severity}
-                    </span>
-                  </td>
-                  <td className="table-cell">
-                    {new Date(vuln.published).toLocaleDateString()}
+              {vulnerabilities.map(vuln => {
+                const sCode = SEV[vuln.severity] || 'lo';
+                const isExpanded = expandedId === vuln.id;
+                
+                return (
+                  <React.Fragment key={vuln.id}>
+                    {/* Main Row */}
+                    <tr 
+                      className={`main-row ${isExpanded ? 'active-row' : ''}`}
+                      onClick={() => toggleRow(vuln.id)}
+                    >
+                      <td className="text-center text-on-surface-variant border-r-0">
+                        <ChevronRight size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                      </td>
+                      <td className="font-mono text-code-sm text-primary">{vuln.cve_id}</td>
+                      <td>{vuln.software?.name || 'Unknown'} {vuln.software?.version ? `v${vuln.software.version}` : ''}</td>
+                      <td className="text-on-surface-variant">{vuln.software?.vendor?.name || 'Unknown'}</td>
+                      <td className="text-center">
+                        <span className={`sev-tag sev-${sCode}`} title={vuln.severity}>
+                          {sCode.toUpperCase()}
+                        </span>
+                      </td>
+                      <td><CvssBar score={vuln.cvss_score || 0} /></td>
+                      <td className="font-mono text-code-sm text-on-surface-variant">
+                        {vuln.published_date ? new Date(vuln.published_date).toISOString().split('T')[0] : 'N/A'}
+                      </td>
+                      <td>
+                        <span className="status-pill">{vuln.status}</span>
+                      </td>
+                    </tr>
+
+                    {/* Expanded Detail Row */}
+                    {isExpanded && (
+                      <tr className="expanded-row">
+                        <td colSpan="8">
+                          <div className="accordion-content grid-cols-12 text-sm">
+                            <div className="col-span-8 flex flex-col gap-unit-4">
+                              <div>
+                                <div className="form-label">DESCRIPTION</div>
+                                <p className="text-on-surface leading-relaxed border-l-2 border-outline-variant pl-4">
+                                  {vuln.summary || 'No description provided.'}
+                                </p>
+                              </div>
+                              {vuln.threats?.length > 0 && (
+                                <div>
+                                  <div className="form-label">LINKED THREATS</div>
+                                  <div className="flex gap-2">
+                                    {vuln.threats.map(t => (
+                                      <span key={t.id} className="status-pill-live">
+                                        {t.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="col-span-4 border-l border-grid-line pl-unit-6 flex flex-col gap-unit-4">
+                              <div className="form-label">ACTIONS</div>
+                              <button className="btn-primary py-unit-2" onClick={() => openEdit(vuln)}>
+                                EDIT RECORD
+                              </button>
+                              <button className="btn-outline py-unit-2 w-full text-on-surface hover:text-on-surface">
+                                INITIATE PATCH
+                              </button>
+                              <button className="btn-danger py-unit-2 w-full" onClick={() => handleDelete(vuln.id)}>
+                                DELETE RECORD
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {vulnerabilities.length === 0 && (
+                <tr>
+                  <td colSpan="8" className="text-center py-unit-8 font-mono text-on-surface-variant">
+                    // no records found
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between border-t border-secondary-200 px-6 py-3">
-          <div className="flex items-center gap-2">
-            <select 
-              className="input py-1 pl-3 pr-8"
-              value={itemsPerPage}
-              onChange={handleItemsPerPageChange}
-            >
-              <option value={10}>10 per page</option>
-              <option value={25}>25 per page</option>
-              <option value={50}>50 per page</option>
-            </select>
-            <span className="text-sm text-secondary-600">
-              Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} results
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter(page => {
-                // Show first page, last page, current page, and pages around current page
-                const nearCurrent = Math.abs(page - currentPage) <= 1;
-                return page === 1 || page === totalPages || nearCurrent;
-              })
-              .map((page, index, array) => (
-                <React.Fragment key={page}>
-                  {index > 0 && array[index - 1] !== page - 1 && (
-                    <span className="text-secondary-400">...</span>
-                  )}
-                  <button 
-                    className={`btn-secondary py-1 px-3 ${currentPage === page ? 'bg-primary-100 text-primary-700' : ''}`}
-                    onClick={() => handlePageChange(page)}
-                  >
-                    {page}
-                  </button>
-                </React.Fragment>
-              ))
-            }
-            <button 
-              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
       </div>
 
-      {/* Selected Vulnerability Details */}
-      {selectedVuln && (
-        <div className="card p-6 space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-secondary-600 mb-1">
-                CVE ID: {selectedVuln.cve_id}
-              </div>
-              <h2 className="text-2xl font-display font-bold text-secondary-900">
-                {selectedVuln.summary}
-              </h2>
-            </div>
-            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getSeverityClass(selectedVuln.severity)}`}>
-              {selectedVuln.severity}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="card p-4">
-              <div className="text-xs text-secondary-600 mb-1">Software</div>
-              <div className="font-medium">
-                {selectedVuln.software?.name}
-                {selectedVuln.software?.version && ` (${selectedVuln.software.version})`}
-              </div>
-            </div>
-            <div className="card p-4">
-              <div className="text-xs text-secondary-600 mb-1">Vendor</div>
-              <div className="font-medium">
-                {selectedVuln.software?.vendor?.name}
-                {selectedVuln.software?.vendor?.website && (
-                  <a
-                    href={selectedVuln.software.vendor.website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary-600 hover:text-primary-700 ml-2 text-sm"
-                  >
-                    (Website)
-                  </a>
-                )}
-              </div>
-            </div>
-            <div className="card p-4">
-              <div className="text-xs text-secondary-600 mb-1">CVSS Score</div>
-              <div className="font-medium">{selectedVuln.cvss_score?.toFixed(1)}</div>
-            </div>
-            <div className="card p-4">
-              <div className="text-xs text-secondary-600 mb-1">Published</div>
-              <div className="font-medium">
-                {new Date(selectedVuln.published).toLocaleDateString()}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm text-secondary-600 mb-1">
-                {selectedVuln.description}
-              </h2>
-            </div>
-          </div>
-
-          {/* Associated Threats */}
-          {selectedVuln.threats && selectedVuln.threats.length > 0 && (
-            <div>
-              <h3 className="font-display font-semibold text-lg mb-3">Associated Threats</h3>
-              <div className="space-y-3">
-                {selectedVuln.threats.map((threat) => (
-                  <div key={threat.id} className="card p-4">
-                    <div className="font-medium text-secondary-900 mb-1">{threat.name}</div>
-                    <p className="text-sm text-secondary-600">{threat.description}</p>
-                    {threat.threat_type && (
-                      <div className="mt-2">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                          {threat.threat_type.name}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Available Patches */}
-          {selectedVuln.patches && selectedVuln.patches.length > 0 && (
-            <div>
-              <h3 className="font-display font-semibold text-lg mb-3">Available Patches</h3>
-              <div className="space-y-3">
-                {selectedVuln.patches.map((patch) => (
-                  <div key={patch.id} className="card p-4">
-                    {patch.url ? (
-                      <a
-                        href={patch.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary-600 hover:text-primary-700 font-medium"
-                      >
-                        Download Patch
-                        {patch.released && ` (Released: ${new Date(patch.released).toLocaleDateString()})`}
-                      </a>
-                    ) : (
-                      <div className="text-secondary-600">Patch information not available</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2">
-            <button 
-              onClick={() => handleDeleteVulnerability(selectedVuln.id)} 
-              className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100"
-            >
-              Delete Vulnerability
+      {/* Right Drawer Form */}
+      <Drawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={isEditing ? 'EDIT CVE RECORD' : 'NEW CVE RECORD'}
+        footer={
+          <>
+            <button type="button" onClick={() => setDrawerOpen(false)} className="btn-outline flex-1">CANCEL</button>
+            <button type="button" onClick={handleSave} disabled={loadingForm} className="btn-primary flex-1 disabled:opacity-50">
+              {loadingForm ? 'SAVING...' : 'COMMIT'}
             </button>
-            <button
-              onClick={() => {
-                setEditingVulnerability({
-                  ...selectedVuln,
-                  software_id: selectedVuln.software_id,
-                  threats: selectedVuln.threats?.map(t => t.id) || [],
-                });
-                setShowEditForm(true);
-              }}
-              className="btn-primary"
-            >
-              Edit Vulnerability
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Form */}
-      {showEditForm && selectedVuln && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <h2 className="text-2xl font-display font-bold">Edit Vulnerability</h2>
-              <button onClick={() => setShowEditForm(false)} className="text-secondary-500 hover:text-secondary-700">
-                <X className="w-6 h-6" />
-              </button>
+          </>
+        }
+      >
+        <form className="space-y-unit-6">
+          <div className="grid grid-cols-2 gap-unit-4">
+            <div>
+              <label className="form-label">CVE ID</label>
+              <input type="text" className="input-underline" value={formData.cve_id}
+                onChange={e => setFormData({...formData, cve_id: e.target.value})} placeholder="CVE-YYYY-NNNN" />
             </div>
-            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              handleEditVulnerability();
-            }} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">CVE ID</label>
-                  <input
-                    type="text"
-                    className="input mt-1 w-full"
-                    placeholder={selectedVuln.cve_id}
-                    value={editingVulnerability.cve_id}
-                    onChange={(e) => setEditingVulnerability({...editingVulnerability, cve_id: e.target.value})}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">Software</label>
-                  <select
-                    className="input mt-1 w-full"
-                    value={editingVulnerability.software_id}
-                    onChange={(e) => setEditingVulnerability({...editingVulnerability, software_id: e.target.value})}
-                    required
-                  >
-                    <option value="">Select Software</option>
-                    {softwareList.map((sw) => (
-                      <option key={sw.id} value={sw.id}>{sw.name}</option>
-                    ))}
-                  </select>
-                </div>
-                {/* <div>
-                  <label className="block text-sm font-medium text-secondary-700">Name</label>
-                  <input
-                    type="text"
-                    className="input mt-1 w-full"
-                    placeholder={selectedVuln.name}
-                    value={editingVulnerability.name}
-                    onChange={(e) => setEditingVulnerability({...editingVulnerability, name: e.target.value})}
-                    required
-                  />
-                </div> */}
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">CVSS Score</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="10"
-                    className="input mt-1 w-full"
-                    placeholder={selectedVuln.cvss_score}
-                    value={editingVulnerability.cvss_score}
-                    onChange={(e) => {
-                      const value = parseFloat(e.target.value);
-                      if (!isNaN(value) && value >= 0 && value <= 10) {
-                        setEditingVulnerability({...editingVulnerability, cvss_score: value});
-                      }
-                    }}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">Severity</label>
-                  <select
-                    className="input mt-1 w-full"
-                    value={editingVulnerability.severity}
-                    onChange={(e) => setEditingVulnerability({...editingVulnerability, severity: e.target.value})}
-                    required
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                    <option value="Critical">Critical</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700">Summary</label>
-                <textarea
-                  className="input mt-1 w-full"
-                  rows="3"
-                  placeholder={selectedVuln.summary}
-                  value={editingVulnerability.summary}
-                  onChange={(e) => setEditingVulnerability({...editingVulnerability, summary: e.target.value})}
-                  required
-                ></textarea>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700">Description</label>
-                <textarea
-                  className="input mt-1 w-full"
-                  rows="3"
-                  placeholder={selectedVuln.description}
-                  value={editingVulnerability.description}
-                  onChange={(e) => setEditingVulnerability({...editingVulnerability, description: e.target.value})}
-                  required
-                ></textarea>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary-700">Associated Threats</label>
-                <div className="mt-2 space-y-2">
-                  {threatList.map((threat) => (
-                    <div key={threat.id} className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id={`edit-threat-${threat.id}`}
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                        checked={editingVulnerability.threats.includes(threat.id)}
-                        onChange={(e) => {
-                          const threats = e.target.checked 
-                            ? [...editingVulnerability.threats, threat.id]
-                            : editingVulnerability.threats.filter(id => id !== threat.id);
-                          setEditingVulnerability({...editingVulnerability, threats});
-                        }}
-                      />
-                      <label htmlFor={`edit-threat-${threat.id}`} className="ml-3">
-                        <span className="block text-sm font-medium text-secondary-900">{threat.name}</span>
-                        {threat.threat_type && (
-                          <span className="text-xs text-secondary-500">{threat.threat_type.name}</span>
-                        )}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowEditForm(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Save Changes
-                </button>
-              </div>
-            </form>
+            <div>
+              <label className="form-label">CVSS Score</label>
+              <input type="number" step="0.1" className="input-underline" value={formData.cvss_score}
+                onChange={e => setFormData({...formData, cvss_score: e.target.value})} placeholder="0.0 - 10.0" />
+            </div>
+            <div>
+              <label className="form-label">Severity</label>
+              <select className="input-underline-select" value={formData.severity} onChange={e => setFormData({...formData, severity: e.target.value})}>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Status</label>
+              <select className="input-underline-select" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                <option value="Active">Active</option>
+                <option value="Patch Available">Patch Available</option>
+                <option value="Patched">Patched</option>
+                <option value="Mitigated">Mitigated</option>
+              </select>
             </div>
           </div>
-        </div>
-      )}
+          <div>
+            <label className="form-label">Affected Software</label>
+            <select className="input-underline-select" value={formData.software_id} onChange={e => setFormData({...formData, software_id: e.target.value})}>
+              <option value="">Select asset...</option>
+              {softwareList.map(sw => <option key={sw.id} value={sw.id}>{sw.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Summary</label>
+            <textarea className="input-underline min-h-[100px]" value={formData.summary}
+              onChange={e => setFormData({...formData, summary: e.target.value})} placeholder="Brief description..." />
+          </div>
+          <div>
+            <label className="form-label">Linked Threats</label>
+            <select multiple className="input-underline min-h-[120px]" value={formData.threats}
+              onChange={e => setFormData({...formData, threats: Array.from(e.target.selectedOptions, o => o.value)})}>
+              {threatList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <div className="font-mono text-[10px] text-outline mt-1">Hold CTRL/CMD to select multiple</div>
+          </div>
+        </form>
+      </Drawer>
     </div>
   );
-};
-
-export default Vulnerabilities;
+}

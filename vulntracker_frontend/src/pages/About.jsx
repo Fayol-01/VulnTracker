@@ -1,88 +1,70 @@
 import React from 'react';
-import { Shield, Activity, Lock, Database, Share2, Users } from 'lucide-react';
+import { Terminal, Shield, Cpu, Database, Network } from 'lucide-react';
 
-const About = () => {
+export default function About() {
   return (
-    <div className="space-y-12 py-8">
-      {/* Hero Section */}
-      <div className="text-center space-y-4">
-        <h1 className="text-4xl font-display font-bold text-secondary-900">About VulnTracker</h1>
-        <p className="text-xl text-secondary-600 max-w-3xl mx-auto">
-          A comprehensive vulnerability management platform helping organizations track, manage, and remediate security vulnerabilities effectively.
-        </p>
-      </div>
-
-      {/* Features Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto px-4">
-        <FeatureCard 
-          icon={<Shield className="w-8 h-8" />}
-          title="Vulnerability Tracking"
-          description="Centralized tracking of security vulnerabilities across your software ecosystem with detailed insights and severity ratings."
-        />
-        <FeatureCard 
-          icon={<Activity className="w-8 h-8" />}
-          title="Real-time Monitoring"
-          description="Stay informed with real-time updates on new vulnerabilities, patches, and security threats affecting your systems."
-        />
-        <FeatureCard 
-          icon={<Lock className="w-8 h-8" />}
-          title="Patch Management"
-          description="Streamline the patch management process with organized tracking of available patches and their implementation status."
-        />
-        <FeatureCard 
-          icon={<Database className="w-8 h-8" />}
-          title="Comprehensive Database"
-          description="Access a rich database of known vulnerabilities, including CVE details, affected software versions, and remediation steps."
-        />
-        <FeatureCard 
-          icon={<Share2 className="w-8 h-8" />}
-          title="Integration Support"
-          description="Seamlessly integrate with your existing security tools and workflows for enhanced vulnerability management."
-        />
-        <FeatureCard 
-          icon={<Users className="w-8 h-8" />}
-          title="Team Collaboration"
-          description="Foster team collaboration with shared dashboards, assignments, and progress tracking features."
-        />
-      </div>
-
-      {/* Mission Statement */}
-      <div className="bg-primary-50 py-12 px-4">
-        <div className="max-w-4xl mx-auto text-center space-y-4">
-          <h2 className="text-3xl font-display font-bold text-primary-900">Our Mission</h2>
-          <p className="text-lg text-primary-800">
-            To empower organizations with the tools and insights they need to maintain robust security postures and effectively manage vulnerabilities in their systems.
-          </p>
+    <div className="min-h-[calc(100vh-48px)] flex items-center justify-center p-unit-8">
+      <div className="w-full max-w-[600px] border border-outline-variant bg-surface">
+        {/* Header */}
+        <div className="px-unit-8 pt-unit-8 pb-unit-6 border-b border-outline-variant text-center">
+          <Shield size={48} className="text-primary-container mx-auto mb-unit-4" strokeWidth={1} />
+          <h1 className="font-mono text-headline-lg uppercase tracking-widest text-primary">
+            SYSTEM INFO
+          </h1>
+          <div className="font-mono text-code-sm text-on-surface-variant mt-2">
+            VulnTracker Platform v2.5.0
+          </div>
         </div>
-      </div>
 
-      {/* Tech Stack Section */}
-      <div className="max-w-4xl mx-auto px-4">
-        <h2 className="text-2xl font-display font-bold text-secondary-900 mb-6 text-center">Built with Modern Technology</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <TechItem name="React" description="Frontend Framework" />
-          <TechItem name="Flask" description="Backend API" />
-          <TechItem name="Supabase" description="Database & Auth" />
-          <TechItem name="Tailwind" description="Styling" />
+        {/* Body */}
+        <div className="px-unit-8 py-unit-8 space-y-unit-8">
+          
+          <div className="space-y-unit-2">
+            <h2 className="font-mono text-label-caps uppercase tracking-widest text-on-surface-variant border-b border-outline-variant pb-1">
+              MISSION
+            </h2>
+            <p className="font-mono text-body-md text-on-surface leading-relaxed pt-2">
+              To provide security operators with a centralized, high-efficiency interface for tracking and remediating zero-day vulnerabilities across distributed environments.
+            </p>
+          </div>
+
+          <div className="space-y-unit-4">
+            <h2 className="font-mono text-label-caps uppercase tracking-widest text-on-surface-variant border-b border-outline-variant pb-1">
+              ARCHITECTURE
+            </h2>
+            <div className="grid gap-3 pt-2">
+              <div className="flex items-center gap-3">
+                <Terminal size={16} className="text-primary-container" />
+                <span className="font-mono text-code-sm w-24 text-on-surface-variant">FRONTEND:</span>
+                <span className="font-mono text-code-sm text-on-surface">React 18 / Tailwind v3 / Vite</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Cpu size={16} className="text-tertiary-container" />
+                <span className="font-mono text-code-sm w-24 text-on-surface-variant">BACKEND:</span>
+                <span className="font-mono text-code-sm text-on-surface">Python Flask REST API</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Database size={16} className="text-secondary-fixed-dim" />
+                <span className="font-mono text-code-sm w-24 text-on-surface-variant">DATABASE:</span>
+                <span className="font-mono text-code-sm text-on-surface">Supabase PostgreSQL</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Network size={16} className="text-primary" />
+                <span className="font-mono text-code-sm w-24 text-on-surface-variant">AI ENGINE:</span>
+                <span className="font-mono text-code-sm text-on-surface">Google Gemini Flash</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div className="px-unit-8 py-unit-4 border-t border-outline-variant bg-surface-container-lowest text-center">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">
+            © {new Date().getFullYear()} Security Operations Center. All rights reserved.
+          </span>
         </div>
       </div>
     </div>
   );
-};
-
-const FeatureCard = ({ icon, title, description }) => (
-  <div className="card p-6 space-y-4">
-    <div className="text-primary-500">{icon}</div>
-    <h3 className="text-xl font-display font-semibold text-secondary-900">{title}</h3>
-    <p className="text-secondary-600">{description}</p>
-  </div>
-);
-
-const TechItem = ({ name, description }) => (
-  <div className="text-center p-4 bg-secondary-50 rounded-lg">
-    <div className="font-semibold text-secondary-900">{name}</div>
-    <div className="text-sm text-secondary-600">{description}</div>
-  </div>
-);
-
-export default About;
+}

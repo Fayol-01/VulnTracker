@@ -2,14 +2,13 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from flask_jwt_extended import JWTManager, jwt_required, create_access_token
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_swagger_ui import get_swaggerui_blueprint
 from datetime import datetime, timedelta, timezone
 import structlog
 import os
-from werkzeug.security import generate_password_hash, check_password_hash
+from auth import require_auth, require_write
 #git test
 # Configure structured logging
 logger = structlog.get_logger()
@@ -42,11 +41,8 @@ logger = structlog.get_logger()
 load_dotenv()
 
 app = Flask(__name__)
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key')  # Change in production
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
 
 # Initialize extensions
-jwt = JWTManager(app)
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
@@ -112,113 +108,8 @@ def handle_error(error):
         "timestamp": datetime.utcnow().isoformat()
     }), 500
 
-def validate_supabase_token():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return None, ("No valid authentication token provided", 401)
-        
-    try:
-        token = auth_header.split(' ')[1]
-        # Verify token with Supabase
-        response = supabase.auth.get_user(token)
-        if not response.user:
-            return None, ("Invalid authentication token", 401)
-        return response.user, None
-    except Exception as e:
-        logger.error("auth_error", error=str(e))
-        return None, ("Invalid authentication token", 401)
-
-@app.before_request
-def before_request():
-    logger.info("request_started",
-                path=request.path,
-                method=request.method,
-                ip=get_remote_address())
-    
-    # Skip auth for non-API routes and OPTIONS requests
-    if not request.path.startswith('/api/') or request.method == 'OPTIONS':
-        return
-    
-    # Skip auth for login/register routes
-    if request.path in ['/api/auth/login', '/api/auth/register']:
-        return
-        
-    # Skip auth for GET requests to main data endpoints
-    if request.method == 'GET' and request.path in [
-        '/api/vendors', '/api/software', '/api/vulnerabilities',
-        '/api/threats', '/api/threat-types', '/api/patches'
-    ]:
-        return
-    
-    # Require auth for all POST, PUT, DELETE requests
-    user, error = validate_supabase_token()
-    if error:
-        return jsonify({"error": error[0]}), error[1]
-    
-    # Store validated user in request context
-    request.user = user
-
-# Authentication routes
-@app.route("/api/auth/register", methods=['POST'])
-def register():
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
-        
-        # Check if user already exists
-        existing_user = supabase.table('users').select("*").eq('email', email).execute()
-        if existing_user.data:
-            return jsonify({"error": "User already exists"}), 409
-            
-        # Create new user
-        password_hash = generate_password_hash(password)
-        new_user = supabase.table('users').insert({
-            "email": email,
-            "password_hash": password_hash
-        }).execute()
-        
-        # Generate token
-        access_token = create_access_token(identity=email)
-        return jsonify({
-            "token": access_token,
-            "user": {"email": email}
-        }), 201
-        
-    except Exception as e:
-        logger.error("registration_error", error=str(e))
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/auth/login", methods=['POST'])
-def login():
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
-        
-        # Find user
-        user_result = supabase.table('users').select("*").eq('email', email).execute()
-        if not user_result.data:
-            return jsonify({"error": "Invalid credentials"}), 401
-            
-        user = user_result.data[0]
-        
-        # Verify password
-        if not check_password_hash(user['password_hash'], password):
-            return jsonify({"error": "Invalid credentials"}), 401
-            
-        # Generate token
-        access_token = create_access_token(identity=email)
-        return jsonify({
-            "token": access_token,
-            "user": {"email": email}
-        })
-        
-    except Exception as e:
-        logger.error("login_error", error=str(e))
-        return jsonify({"error": str(e)}), 500
-
 # Protected routes
+@require_auth
 @app.route("/api/vendors", methods=['GET', 'POST'])
 def handle_vendors():
     if request.method == 'GET':
@@ -231,6 +122,8 @@ def handle_vendors():
             logger.error("vendor_fetch_error", error=str(e))
             return jsonify({"error": str(e)}), 500
     elif request.method == 'POST':
+        resp = require_write()
+        if resp: return resp
         try:
             data = request.get_json()
             if not data or not data.get('name'):
@@ -239,7 +132,7 @@ def handle_vendors():
             response = supabase.table('vendors').insert({
                 "name": data['name'],
                 "website": data.get('website'),
-                "user_id": request.user.id
+                "user_id": request.user.get('sub')
             }).execute()
             
             if not response.data:
@@ -250,6 +143,7 @@ def handle_vendors():
             logger.error("vendor_create_error", error=str(e))
             return jsonify({"error": str(e)}), 500
 
+@require_auth
 @app.route("/api/software", methods=['GET', 'POST'])
 def handle_software():
     if request.method == 'GET':
@@ -284,6 +178,8 @@ def handle_software():
             return jsonify({"error": str(e)}), 500
 
     elif request.method == 'POST':
+        resp = require_write()
+        if resp: return resp
         try:
             data = request.json
             response = supabase.table("software").insert(data).execute()
@@ -292,6 +188,7 @@ def handle_software():
             print(f"Error adding software: {str(e)}")
             return jsonify({"error": str(e)}), 500
         
+@require_auth
 @app.route("/api/vulnerabilities", methods=['GET', 'POST'])
 def handle_vulnerabilities():
     if request.method == "GET":
@@ -323,6 +220,8 @@ def handle_vulnerabilities():
             return jsonify({"error": str(e)}), 500
 
     elif request.method == "POST":
+        resp = require_write()
+        if resp: return resp
         try:
             data = request.json
             logger.info("received_vulnerability_data", data=data)
@@ -357,8 +256,8 @@ def handle_vulnerabilities():
             print(f"Error creating vulnerability: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
+@require_auth
 @app.route("/api/vulnerabilities/<int:vuln_id>", methods=['PUT', 'DELETE'])
-@jwt_required()
 def manage_vulnerability(vuln_id):
     if request.method == 'DELETE':
         try:
@@ -400,8 +299,8 @@ def manage_vulnerability(vuln_id):
             print(f"Error updating vulnerability: {str(e)}")
             return jsonify({"error": str(e)}), 500
     
+@require_auth
 @app.route("/api/threats/<int:threat_id>", methods=['PUT', 'DELETE'])
-@jwt_required()
 def manage_threat(threat_id):
     if request.method == 'DELETE':
         try:
@@ -434,8 +333,8 @@ def manage_threat(threat_id):
             print(f"Error updating threat: {str(e)}")
             return jsonify({"error": str(e)}), 500
     
+@require_auth
 @app.route("/api/patches/<int:patch_id>", methods=['PUT', 'DELETE'])
-@jwt_required()
 def manage_patch(patch_id):
     if request.method == 'DELETE':
         try:
@@ -468,8 +367,8 @@ def manage_patch(patch_id):
             print(f"Error updating patch: {str(e)}")
             return jsonify({"error": str(e)}), 500
     
+@require_auth
 @app.route("/api/software/<int:software_id>", methods=['PUT', 'DELETE'])
-@jwt_required()
 def manage_software(software_id):
     if request.method == 'DELETE':
         try:
@@ -507,6 +406,7 @@ def manage_software(software_id):
             print(f"Error updating software: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
+@require_auth
 @app.route("/api/threats", methods=['GET', 'POST'])
 
 def handle_threats():
@@ -587,6 +487,7 @@ def handle_threats():
         except Exception as e:
             print(f"Error creating threat: {str(e)}")
             return jsonify({"error": str(e)}), 500
+@require_auth
 @app.route("/api/threat-types", methods=['GET', 'POST'])
 def handle_threat_types():
     if request.method == 'GET':
@@ -608,6 +509,7 @@ def handle_threat_types():
             print(f"Error creating threat type: {str(e)}")
             return jsonify({"error": str(e)}), 500
 
+@require_auth
 @app.route("/api/patches", methods=['GET', 'POST'])
 def handle_patches():
     if request.method == 'GET':
@@ -746,6 +648,7 @@ def handle_patches():
             print(f"Error creating patch: {str(e)}")
             return jsonify({"error": str(e)}), 500
         
+@require_auth
 @app.route("/api/vulnerabilities/<int:vuln_id>/threats", methods=['POST'])
 def link_vulnerability_threat(vuln_id):
     try:
@@ -769,4 +672,4 @@ def health():
         return {"status": "error", "details": str(e)}, 500
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

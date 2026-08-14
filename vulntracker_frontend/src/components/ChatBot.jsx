@@ -1,210 +1,121 @@
-import React, { useState, useEffect } from 'react';
-import { MessageCircle, X, Send } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Send, Terminal as TerminalIcon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-const ChatBot = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+export default function ChatBot({ isOpen, onClose }) {
+  const [messages, setMessages] = useState([
+    { role: 'system', content: 'VulnTracker AI v2.5 ready. Query the knowledge base below.', ts: new Date() }
+  ]);
+  const [input, setInput]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [token, setToken]   = useState(null);
   const { isAuthenticated } = useAuth();
-  const [accessToken, setAccessToken] = useState(null);
+  const endRef = useRef(null);
 
   useEffect(() => {
-    const getToken = async () => {
+    const get = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        console.log('Session found, setting access token');
-        setAccessToken(session.access_token);
-      } else {
-        console.log('No active session found');
-        setAccessToken(null);
-      }
+      setToken(session?.access_token || null);
     };
-    getToken();
-
-    // Subscribe to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('Auth state changed:', _event);
-      setAccessToken(session?.access_token || null);
-    });
-
-    return () => {
-      subscription?.unsubscribe();
-    };
+    get();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setToken(s?.access_token || null));
+    return () => subscription?.unsubscribe();
   }, []);
 
-  const getAuthToken = () => {
-    if (!accessToken) {
-      console.log('No access token available');
-      return null;
-    }
-    return accessToken;
-  };
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
 
-  const handleSendMessage = async (e) => {
+  const send = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || isLoading) return;
-
-    const userMessage = {
-      content: inputMessage,
-      role: 'user',
-      timestamp: new Date().toISOString()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputMessage('');
-    setIsLoading(true);
-
+    if (!input.trim() || loading) return;
+    const userMsg = { role: 'user', content: input, ts: new Date() };
+    setMessages(p => [...p, userMsg]);
+    setInput('');
+    setLoading(true);
     try {
-      const token = getAuthToken();
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      console.log('Sending chat message...');
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
-
-      const response = await fetch(`${API_URL}/chat`, {
+      if (!token) throw new Error('no_token');
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 60000);
+      const res  = await fetch(`${API_URL}/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ message: userMessage.content }),
-        signal: controller.signal
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ message: userMsg.content }),
+        signal: ctrl.signal,
       });
-
-      const data = await response.json();
-      
-      if (!response.ok) throw new Error(data.message || 'Failed to get response');
-
-      const botMessage = {
-        content: data.response,
-        role: 'assistant',
-        timestamp: new Date().toISOString()
-      };
-
-      setMessages(prev => [...prev, botMessage]);
-    } catch (error) {
-      console.error('Chat error:', error);
-      let errorMsg = "I'm sorry, I'm having trouble responding right now. Please try again later.";
-      
-      if (error.name === 'AbortError') {
-        errorMsg = "The request took too long to respond. Please try again.";
-      } else if (error.message === 'No authentication token found') {
-        errorMsg = "You need to log in again to continue chatting.";
-      } else if (error.response && error.response.status === 401) {
-        errorMsg = "Your session has expired. Please log in again.";
-        // Optionally trigger a logout or redirect to login
-      }
-
-      const errorMessage = {
-        content: errorMsg,
-        role: 'assistant',
-        timestamp: new Date().toISOString()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'api_error');
+      setMessages(p => [...p, { role: 'assistant', content: data.response, ts: new Date() }]);
+    } catch (err) {
+      const map = { no_token: 'Session expired.', AbortError: 'Request timed out.' };
+      setMessages(p => [...p, { role: 'error', content: map[err.name] || map[err.message] || 'Connection error.', ts: new Date() }]);
+    } finally { setLoading(false); }
   };
 
-  if (!isAuthenticated) {
-    console.log('ChatBot: User not authenticated');
-    return null;
-  }
-  
-  console.log('ChatBot: User authenticated, rendering chat interface');
+  if (!isAuthenticated || !isOpen) return null;
+
+  const prefix = (role) => ({ user: 'operator> ', system: '// sys: ', error: '[err] ', assistant: 'ai> ' })[role] || 'ai> ';
+  const color  = (role) => ({ user: 'text-primary-container', system: 'text-on-surface-variant', error: 'text-error', assistant: 'text-secondary-fixed' })[role] || 'text-secondary-fixed';
+
   return (
-    <div className="fixed top-0 right-0 z-[9999] h-screen">
-      {!isOpen ? (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="absolute top-4 right-4 w-14 h-14 bg-primary-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-primary-700 transition-colors"
-          aria-label="Open chat"
-        >
-          <MessageCircle className="w-6 h-6" />
-        </button>
-      ) : (
-        <div className="bg-white shadow-xl w-[380px] h-full flex flex-col border-l">
-          {/* Header */}
-          <div className="p-4 border-b flex justify-between items-center bg-primary-600 text-white">
-            <h3 className="font-semibold">VulnTracker Assistant</h3>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="text-white/80 hover:text-white transition-colors"
-              aria-label="Close chat"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-50">
-            {messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                <div
-                  className={`max-w-[80%] p-3 rounded-lg shadow-sm ${
-                    message.role === 'user'
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-white text-secondary-900'
-                  }`}
-                >
-                  <p className="text-sm">{message.content}</p>
-                  <span className="text-xs opacity-70 block mt-1">
-                    {new Date(message.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white text-secondary-900 p-3 rounded-lg shadow-sm">
-                  <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce [animation-delay:-.3s]"></div>
-                    <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce [animation-delay:-.5s]"></div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Input Area */}
-          <form onSubmit={handleSendMessage} className="p-4 border-t bg-white">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 input text-sm focus:ring-primary-500 focus:border-primary-500"
-                disabled={isLoading}
-              />
-              <button
-                type="submit"
-                disabled={isLoading || !inputMessage.trim()}
-                className="btn-primary p-2 rounded-lg hover:bg-primary-700 transition-colors"
-                aria-label="Send message"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
-          </form>
+    <div className="fixed inset-0 z-[100] bg-surface-container-lowest flex flex-col font-mono">
+      {/* Header */}
+      <div className="flex items-center justify-between px-container-margin py-unit-4
+                      border-b border-outline-variant flex-shrink-0 bg-surface">
+        <div className="flex items-center gap-unit-2">
+          <TerminalIcon size={14} className="text-primary-container" />
+          <span className="font-mono text-label-caps uppercase tracking-widest text-on-surface-variant">
+            AI Terminal — Session Active
+          </span>
+          <span className="dot-green ml-unit-2" />
         </div>
-      )}
+        <button onClick={onClose} className="text-on-surface-variant hover:text-error transition-colors">
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-container-margin py-unit-6 space-y-unit-2">
+        {messages.map((m, i) => (
+          <div key={i} className="flex gap-unit-2 text-code-sm">
+            <span className="text-on-surface-variant text-[10px] flex-shrink-0 pt-[1px]">
+              {m.ts?.toLocaleTimeString('en-GB', { hour12: false })}
+            </span>
+            <span className={`${color(m.role)} whitespace-pre-wrap`}>
+              <span className="text-on-surface-variant">{prefix(m.role)}</span>
+              {m.content}
+            </span>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex gap-unit-2 text-code-sm">
+            <span className="text-on-surface-variant text-[10px]">
+              {new Date().toLocaleTimeString('en-GB', { hour12: false })}
+            </span>
+            <span className="text-secondary-fixed animate-pulse">ai&gt; processing...</span>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {/* Input */}
+      <form onSubmit={send}
+        className="flex items-center gap-unit-4 px-container-margin py-unit-4
+                   border-t border-outline-variant flex-shrink-0 bg-surface">
+        <span className="text-on-surface-variant text-code-sm flex-shrink-0">operator&gt;</span>
+        <input
+          type="text" value={input} onChange={e => setInput(e.target.value)}
+          disabled={loading} autoFocus
+          placeholder="type query..."
+          className="flex-1 bg-transparent border-none outline-none font-mono text-code-sm
+                     text-primary-container placeholder:text-outline"
+        />
+        <button type="submit" disabled={loading || !input.trim()}
+          className="text-primary-container disabled:opacity-30 transition-opacity">
+          <Send size={14} />
+        </button>
+      </form>
     </div>
   );
-};
-
-export default ChatBot;
+}
