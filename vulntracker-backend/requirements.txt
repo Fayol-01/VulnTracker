@@ -11,6 +11,4 @@ flask-swagger-ui==4.11.1
 marshmallow==3.21.1
 PyJWT==2.8.0
 cryptography==42.0.8
-flask-limiter==3.8.0
-flask-swagger-ui==4.11.1
-marshmallow==3.21.1
+
