@@ -1,10 +1,9 @@
 from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 import structlog
-from supabase import create_client
+from auth import require_auth
 
 # Load environment variables
 load_dotenv()
@@ -48,33 +47,11 @@ SYSTEM_CONTEXT = """You are a cybersecurity assistant in the VulnTracker applica
 Keep your responses focused on cybersecurity topics and professional in tone."""
 
 @chat_bp.route('/chat', methods=['POST'])
+@require_auth
 def chat_with_gemini():
     try:
-        # Get auth token from request headers
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            logger.error("chat_unauthorized", error="Invalid or missing token")
-            return jsonify({'error': 'Authentication required'}), 401
-            
-        # Extract token and validate with Supabase
-        token = auth_header.split(' ')[1]
-        try:
-            # Create Supabase client and verify token
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_SERVICE_KEY")  # Use service key for auth
-            supabase = create_client(supabase_url, supabase_key)
-            
-            # Verify the JWT token
-            try:
-                user = supabase.auth.get_user(token)
-                current_user = user.user.id
-            except Exception as e:
-                logger.error("chat_token_verification_error", error=str(e))
-                return jsonify({'error': 'Invalid token'}), 401
-        except Exception as auth_error:
-            logger.error("chat_auth_error", error=str(auth_error))
-            return jsonify({'error': 'Invalid authentication token'}), 401
-            
+        # request.user is populated by require_auth (validated Supabase JWT payload)
+        current_user = request.user.get('sub')
         logger.info("chat_request_received", user=current_user)
 
         # Validate request

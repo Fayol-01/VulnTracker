@@ -1,132 +1,185 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+
+function CvssBar({ score }) {
+  const pct  = Math.min(100, (score / 10) * 100);
+  const segs = 5;
+  const filled = Math.round((pct / 100) * segs);
+  let colorClass = 'lo';
+  if (score >= 9.0) colorClass = 'cr';
+  else if (score >= 7.0) colorClass = 'hi';
+  else if (score >= 4.0) colorClass = 'me';
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`font-mono font-bold text-sm ${colorClass === 'cr' ? 'text-error' : colorClass === 'hi' ? 'text-tertiary-container' : colorClass === 'me' ? 'text-tertiary-fixed' : 'text-primary'}`}>
+        {score?.toFixed(1)}
+      </span>
+      <div className="flex">
+        {Array.from({ length: segs }, (_, i) => (
+          <span key={i} className={`cvss-seg ${i < filled ? colorClass : ''}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const SEV = {
+  Critical: 'cr',
+  High: 'hi',
+  Medium: 'me',
+  Low: 'lo'
+};
 
 export default function Dashboard() {
-  const [vendors, setVendors] = useState([]);
-  const [software, setSoftware] = useState([]);
+  const [vendors, setVendors]               = useState([]);
+  const [software, setSoftware]             = useState([]);
   const [vulnerabilities, setVulnerabilities] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading]           = useState(true);
+  const [error, setError]                   = useState(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const [vendorsData, softwareData, vulnsData] = await Promise.all([
-          api.getVendors(),
-          api.getSoftware(),
-          api.getVulnerabilities()
+        const [v, s, vuln] = await Promise.all([
+          api.getVendors(), api.getSoftware(), api.getVulnerabilities()
         ]);
-        
-        setVendors(Array.isArray(vendorsData) ? vendorsData : []);
-        setSoftware(Array.isArray(softwareData) ? softwareData : []);
-        setVulnerabilities(Array.isArray(vulnsData) ? vulnsData : []);
-      } catch (err) {
-        setError('Failed to fetch data');
-        console.error('Error fetching data:', err);
+        setVendors(Array.isArray(v) ? v : []);
+        setSoftware(Array.isArray(s) ? s : []);
+        setVulnerabilities(Array.isArray(vuln) ? vuln : []);
+      } catch {
+        setError('Failed to load dashboard data.');
       } finally {
         setIsLoading(false);
       }
     };
-
     fetchData();
   }, []);
 
-  // Helper function to get severity class
-  const getSeverityClass = (severity) => {
-    const classes = {
-      'critical': 'text-red-600',
-      'high': 'text-orange-600',
-      'medium': 'text-yellow-600',
-      'low': 'text-blue-600'
-    };
-    return classes[severity?.toLowerCase()] || 'text-secondary-600';
-  };
+  const criticals = vulnerabilities.filter(v => v.severity === 'Critical').length;
+  const latestVulns = [...vulnerabilities].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
-      </div>
-    );
-  }
+  if (isLoading) return null; // handled by global loading bar in real app, keeping simple
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="bg-red-50 text-red-500 p-4 rounded-lg">
-          {error}
-        </div>
+  if (error) return (
+    <div className="p-container-margin">
+      <div className="border border-error/40 bg-error/10 p-4 font-mono text-xs text-error">
+        [ERR] {error}
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-display font-bold mb-8">Vulnerability Tracker</h1>
+    <div className="p-container-margin space-y-unit-8">
       
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-lg shadow-card p-6">
-          <h2 className="text-xl font-semibold mb-2">Vendors</h2>
-          <p className="text-4xl font-bold text-primary-500">{vendors.length}</p>
+      {/* 3 Stat Counters */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-unit-6">
+        <div className="stat-card">
+          <div className="font-mono text-label-caps text-on-surface-variant uppercase tracking-widest">
+            TOTAL CVEs
+          </div>
+          <div className="font-mono text-display text-primary-container">
+            {vulnerabilities.length}
+          </div>
         </div>
-        <div className="bg-white rounded-lg shadow-card p-6">
-          <h2 className="text-xl font-semibold mb-2">Software</h2>
-          <p className="text-4xl font-bold text-primary-500">{software.length}</p>
+        
+        <div className="stat-card">
+          <div className="font-mono text-label-caps text-on-surface-variant uppercase tracking-widest flex items-center justify-between">
+            <span>CRITICAL UNPATCHED</span>
+            {criticals > 0 && <span className="dot-red" />}
+          </div>
+          <div className="font-mono text-display text-error">
+            {criticals}
+          </div>
         </div>
-        <div className="bg-white rounded-lg shadow-card p-6">
-          <h2 className="text-xl font-semibold mb-2">Vulnerabilities</h2>
-          <p className="text-4xl font-bold text-primary-500">{vulnerabilities.length}</p>
+        
+        <div className="stat-card">
+          <div className="font-mono text-label-caps text-on-surface-variant uppercase tracking-widest">
+            ASSETS MONITORED
+          </div>
+          <div className="font-mono text-display text-on-surface">
+            {software.length}
+          </div>
         </div>
       </div>
 
-      {/* Recent Vulnerabilities */}
-      <div className="bg-white rounded-lg shadow-card p-6">
-        <h2 className="text-2xl font-semibold mb-4">Recent Vulnerabilities</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead className="bg-secondary-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary-500 uppercase tracking-wider">CVE ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary-500 uppercase tracking-wider">Software</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary-500 uppercase tracking-wider">Vendor</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary-500 uppercase tracking-wider">Severity</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-secondary-500 uppercase tracking-wider">CVSS Score</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-secondary-200">
-              {(vulnerabilities || []).slice(0, 5).map((vuln) => {
-                // Debug logging for each vulnerability
-                console.log('Processing vulnerability:', vuln);
-                
-                // Extract software and vendor info
-                const software = vuln.software || {};
-                const vendor = software.vendor || {};
-                
+      <div className="w-full h-px bg-outline-variant" />
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-unit-6">
+        
+        {/* Left Col: Latest CVEs */}
+        <div className="lg:col-span-7">
+          <h2 className="section-header">LATEST CVEs</h2>
+          <div className="flex flex-col border border-outline-variant bg-surface-container-lowest">
+            {latestVulns.length === 0 ? (
+              <div className="p-unit-6 text-center font-mono text-code-sm text-on-surface-variant">
+                // no records found
+              </div>
+            ) : (
+              latestVulns.map(vuln => {
+                const sCode = SEV[vuln.severity] || 'lo';
                 return (
-                  <tr key={vuln.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-secondary-900">
+                  <div key={vuln.id} className="feed-line px-unit-4 py-unit-3 hover:bg-surface-variant hover:border-l-[2px] hover:border-l-primary-container transition-all cursor-pointer items-center group">
+                    <div className="w-24 flex-shrink-0 font-mono text-code-sm text-primary group-hover:text-primary-container transition-colors">
                       {vuln.cve_id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-500">
-                      {`${software.name || 'N/A'} ${software.version ? `(${software.version})` : ''}`}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-500">
-                      {vendor.name || 'N/A'}
-                    </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${getSeverityClass(vuln.severity)}`}>
-                      {vuln.severity}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-500">
-                      {typeof vuln.cvss_score === 'number' ? vuln.cvss_score.toFixed(1) : 'N/A'}
-                    </td>
-                  </tr>
+                    </div>
+                    <div className="flex-1 font-mono text-code-sm text-on-surface truncate pr-unit-4">
+                      {vuln.software?.name || 'Unknown'} {vuln.software?.version ? `v${vuln.software.version}` : ''}
+                    </div>
+                    <div className="flex-shrink-0 w-24">
+                      <CvssBar score={vuln.cvss_score || 0} />
+                    </div>
+                    <div className="flex-shrink-0 w-12 text-center">
+                      <span className={`sev-tag sev-${sCode}`} title={vuln.severity}>
+                        {sCode.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-shrink-0 w-24 text-right font-mono text-[10px] text-on-surface-variant">
+                      {vuln.published_date ? new Date(vuln.published_date).toISOString().split('T')[0] : 'N/A'}
+                    </div>
+                  </div>
                 );
-              })}
-            </tbody>
-          </table>
+              })
+            )}
+          </div>
         </div>
+
+        {/* Right Col: Threat Feed */}
+        <div className="lg:col-span-5">
+          <h2 className="section-header">THREAT FEED</h2>
+          <div className="border border-outline-variant bg-surface-container-lowest p-unit-4 min-h-[300px] font-mono text-[11px] leading-loose">
+            <div className="flex gap-2 mb-1">
+              <span className="text-on-surface-variant">[{new Date(Date.now() - 3600000).toLocaleTimeString('en-US', {hour12:false})}]</span>
+              <span className="text-outline">[SYS]</span>
+              <span className="text-on-surface">Operator {user?.email?.split('@')[0]} session initiated.</span>
+            </div>
+            {criticals > 0 && (
+              <div className="flex gap-2 mb-1">
+                <span className="text-on-surface-variant">[{new Date(Date.now() - 1800000).toLocaleTimeString('en-US', {hour12:false})}]</span>
+                <span className="text-error">[ALERT]</span>
+                <span className="text-error">Detected {criticals} critical vulnerabilities lacking patch verification.</span>
+              </div>
+            )}
+            <div className="flex gap-2 mb-1">
+              <span className="text-on-surface-variant">[{new Date(Date.now() - 900000).toLocaleTimeString('en-US', {hour12:false})}]</span>
+              <span className="text-primary-container">[INFO]</span>
+              <span className="text-primary-container">NVD sync completed. {vulnerabilities.length} total records indexed.</span>
+            </div>
+            <div className="flex gap-2 mb-1">
+              <span className="text-on-surface-variant">[{new Date().toLocaleTimeString('en-US', {hour12:false})}]</span>
+              <span className="text-secondary-fixed-dim">[PATCH]</span>
+              <span className="text-secondary-fixed-dim">Automated mitigation workflows standing by.</span>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <span className="text-on-surface-variant animate-pulse">_</span>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );

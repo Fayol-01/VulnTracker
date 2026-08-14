@@ -95,7 +95,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   if (isLoading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center gap-3">
+        <div className="w-2 h-2 bg-cyber-cyan animate-pulse rounded-full" />
+        <span className="font-mono text-xs text-cyber-cyan uppercase tracking-widest">Initializing...</span>
+      </div>
+    );
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

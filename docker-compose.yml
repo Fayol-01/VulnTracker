@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./vulntracker-backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./vulntracker-backend:/app
+      - /app/venv
+      - /app/__pycache__
+    env_file:
+      - ./vulntracker-backend/.env
+    restart: always
+
+  frontend:
+    build:
+      context: ./vulntracker_frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    tty: true
+    volumes:
+      - ./vulntracker_frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:5000/api
+    depends_on:
+      - backend
+    restart: always

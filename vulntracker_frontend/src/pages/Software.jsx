@@ -1,538 +1,241 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight, Trash2, X } from 'lucide-react';
+import { Plus, ChevronRight, Filter } from 'lucide-react';
 import { api } from '../services/api';
-import { supabase } from '../services/supabase';
+import Drawer from '../components/Drawer';
+import { useAuth } from '../contexts/AuthContext';
 
-const Software = () => {
-  const [software, setSoftware] = useState([]);
-  const [selectedSoftware, setSelectedSoftware] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [vendors, setVendors] = useState([]);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [newSoftware, setNewSoftware] = useState({
-    name: '',
-    vendor_id: '',
-    version: '',
-    description: '',
-  });
-  const [editingSoftware, setEditingSoftware] = useState({
-    name: '',
-    vendor_id: '',
-    version: '',
-    description: '',
-  });
+const BLANK_SOFTWARE = { name: '', version: '', vendor_id: '' };
+
+export default function Software() {
+  const [software, setSoftware]         = useState([]);
+  const [vendors, setVendors]           = useState([]);
+  const [expandedId, setExpandedId]     = useState(null);
+  
+  // Drawer state
+  const [drawerOpen, setDrawerOpen]   = useState(false);
+  const [isEditing, setIsEditing]     = useState(false);
+  const [formData, setFormData]       = useState({ ...BLANK_SOFTWARE });
+  const [loadingForm, setLoadingForm] = useState(false);
+  
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setIsLoading(true);
-        const [softwareData, vendorsData] = await Promise.all([
-          api.getSoftware(),
-          api.getVendors()
-        ]);
-        
+        const [softwareData, vendorsData] = await Promise.all([api.getSoftware(), api.getVendors()]);
         setSoftware(Array.isArray(softwareData) ? softwareData : []);
         setVendors(Array.isArray(vendorsData) ? vendorsData : []);
-      } catch (err) {
-        setError('Failed to fetch software data');
-        console.error('Error:', err);
-      } finally {
-        setIsLoading(false);
-      }
+      } catch { console.error('Failed to fetch data'); }
     };
-
     fetchData();
-
-    // Check authentication status
-    const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      setIsAuthenticated(!!data.session);
-    };
-    checkAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-    });
-
-    return () => subscription?.unsubscribe();
   }, []);
 
-  const handleCreateSoftware = async (e) => {
+  const openCreate = () => {
+    setFormData({ ...BLANK_SOFTWARE });
+    setIsEditing(false);
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (sw) => {
+    setFormData({
+      id: sw.id,
+      name: sw.name,
+      version: sw.version || '',
+      vendor_id: sw.vendor_id || ''
+    });
+    setIsEditing(true);
+    setDrawerOpen(true);
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
+    setLoadingForm(true);
     try {
-      const response = await api.createSoftware(newSoftware);
-      setSoftware([response, ...software]);
-      setShowCreateForm(false);
-      setNewSoftware({
-        name: '',
-        vendor_id: '',
-        version: '',
-        description: '',
-      });
-    } catch (err) {
-      console.error('Error creating software:', err);
-    }
+      if (isEditing) {
+        const updated = await api.updateSoftware(formData.id, formData);
+        setSoftware(p => p.map(sw => sw.id === formData.id ? { ...updated, vendor: vendors.find(v => v.id === updated.vendor_id), vulnerabilities: sw.vulnerabilities } : sw));
+      } else {
+        const created = await api.createSoftware(formData);
+        const newSw = { ...created, vendor: vendors.find(v => v.id === created.vendor_id), vulnerabilities: [] };
+        setSoftware(p => [newSw, ...p]);
+      }
+      setDrawerOpen(false);
+    } catch { alert('Failed to save software asset'); }
+    finally { setLoadingForm(false); }
   };
 
-  const handleEditSoftware = async () => {
-    try {
-      const response = await api.updateSoftware(selectedSoftware.id, editingSoftware);
-      setSoftware(software.map(item => 
-        item.id === selectedSoftware.id 
-          ? { ...response, vendor_name: vendors.find(v => v.id === response.vendor_id)?.name } 
-          : item
-      ));
-      setSelectedSoftware({ ...response, vendor_name: vendors.find(v => v.id === response.vendor_id)?.name });
-      setShowEditForm(false);
-      setEditingSoftware({
-        name: '',
-        vendor_id: '',
-        version: '',
-        description: '',
-      });
-    } catch (err) {
-      console.error('Error updating software:', err);
-      alert('Failed to update software. Please try again.');
-    }
-  };
-
-  const handleDeleteSoftware = async (e, id) => {
-    e.stopPropagation(); // Prevent row click event
-    if (!window.confirm('Are you sure you want to delete this software? This cannot be undone.')) {
-      return;
-    }
-    
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this asset?')) return;
     try {
       await api.deleteSoftware(id);
-      setSoftware(software.filter(item => item.id !== id));
-      if (selectedSoftware?.id === id) {
-        setSelectedSoftware(null);
-      }
+      setSoftware(p => p.filter(sw => sw.id !== id));
+      if (expandedId === id) setExpandedId(null);
     } catch (error) {
-      console.error('Error deleting software:', error);
-      // Check if error is about existing vulnerabilities
-      if (error.message.includes('Cannot delete software that has vulnerabilities')) {
-        alert('Cannot delete software that has vulnerabilities. Delete the vulnerabilities first.');
-      } else {
-        alert('Error deleting software. Please try again.');
-      }
+      if (error.message?.includes('vulnerabilities')) {
+        alert('Cannot delete — asset has linked vulnerabilities.');
+      } else { alert('Error deleting asset.'); }
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="bg-red-50 text-red-500 p-4 rounded-lg">
-          {error}
-        </div>
-      </div>
-    );
-  }
-
-  // Calculate pagination values
-  const totalItems = software.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentSoftware = software.slice(startIndex, endIndex);
-
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-    }
-  };
-
-  const handleItemsPerPageChange = (e) => {
-    const newItemsPerPage = parseInt(e.target.value);
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1); // Reset to first page when changing items per page
+  const toggleRow = (id) => {
+    setExpandedId(expandedId === id ? null : id);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-display font-bold text-secondary-900">
-          Software
-        </h1>
-        <div className="flex gap-3">
-          <button className="btn-secondary inline-flex items-center">
-            <Filter className="w-4 h-4 mr-2" />
-            Filter
+    <div className="p-container-margin space-y-unit-4">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-grid-line pb-unit-4">
+        <h1 className="page-title">Asset Inventory</h1>
+        <div className="flex gap-unit-4">
+          <button className="btn-outline">
+            <Filter size={14} /> FILTER
           </button>
           {isAuthenticated && (
-            <button 
-              onClick={() => setShowCreateForm(true)}
-              className="btn-primary inline-flex items-center"
-            >
-              <Plus className="w-4 h-4 mr-2" /> Add Software
+            <button className="btn-primary px-unit-4 w-auto py-unit-2" onClick={openCreate}>
+              <Plus size={14} /> NEW ASSET
             </button>
           )}
         </div>
       </div>
 
-      {/* Create Form */}
-      {showCreateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <h2 className="text-2xl font-display font-bold">Add New Software</h2>
-              <button onClick={() => setShowCreateForm(false)} className="text-secondary-500 hover:text-secondary-700">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
-              <form onSubmit={handleCreateSoftware} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-secondary-700">
-                      Software Name
-                    </label>
-                    <input
-                      type="text"
-                      id="name"
-                      value={newSoftware.name}
-                      onChange={(e) => setNewSoftware({ ...newSoftware, name: e.target.value })}
-                      className="input mt-1 w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="vendor" className="block text-sm font-medium text-secondary-700">
-                      Vendor
-                    </label>
-                    <select
-                      id="vendor"
-                      value={newSoftware.vendor_id}
-                      onChange={(e) => setNewSoftware({ ...newSoftware, vendor_id: e.target.value })}
-                      className="input mt-1 w-full"
-                      required
-                    >
-                      <option value="">Select a vendor...</option>
-                      {vendors.map((vendor) => (
-                        <option key={vendor.id} value={vendor.id}>
-                          {vendor.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="version" className="block text-sm font-medium text-secondary-700">
-                      Version
-                    </label>
-                    <input
-                      type="text"
-                      id="version"
-                      value={newSoftware.version}
-                      onChange={(e) => setNewSoftware({ ...newSoftware, version: e.target.value })}
-                      className="input mt-1 w-full"
-                      placeholder="e.g., 1.0.0"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">Description</label>
-                  <textarea
-                    className="input mt-1 w-full"
-                    rows="4"
-                    placeholder="Description of the software"
-                    value={newSoftware.description}
-                    onChange={(e) => setNewSoftware({...newSoftware, description: e.target.value})}
-                    required
-                  ></textarea>
-                </div>
-                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateForm(false)}
-                    className="btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-primary">
-                    Add Software
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Data Table */}
-      <div className="card overflow-hidden">
+      {/* Table */}
+      <div className="border border-grid-line bg-surface-container-lowest overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="vt-table">
             <thead>
-              <tr className="border-b border-secondary-200">
-                <th className="table-header">Software Name</th>
-                <th className="table-header">Vendor</th>
-                <th className="table-header">Version</th>
-                <th className="table-header">Vulnerabilities</th>
-                <th className="table-header">Status</th>
+              <tr>
+                <th className="w-10 text-center"></th>
+                <th className="w-64">ASSET NAME</th>
+                <th className="w-48">VENDOR</th>
+                <th className="w-32">VERSION</th>
+                <th className="w-32 text-center">CVE COUNT</th>
+                <th className="w-24 text-center">STATUS</th>
               </tr>
             </thead>
             <tbody>
-              {currentSoftware.map((item) => (
-                <tr
-                  key={item.id}
-                  onClick={() => setSelectedSoftware(item)}
-                  className="border-b border-secondary-200 hover:bg-secondary-50 cursor-pointer transition-colors"
-                >
-                  <td className="table-cell font-medium text-primary-600">
-                    {item.name}
-                  </td>
-                  <td className="table-cell">
-                    {item.vendor_name || 'Unknown Vendor'}
-                  </td>
-                  <td className="table-cell">
-                    {item.version || 'N/A'}
-                  </td>
-                  <td className="table-cell">
-                    {item.vulnerability_count || 0}
-                  </td>
-                  <td className="table-cell">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      Active
-                    </span>
+              {software.map(sw => {
+                const isExpanded = expandedId === sw.id;
+                const vulnCnt = sw.vulnerabilities?.length || 0;
+                
+                return (
+                  <React.Fragment key={sw.id}>
+                    {/* Main Row */}
+                    <tr 
+                      className={`main-row ${isExpanded ? 'active-row' : ''} ${vulnCnt > 0 ? 'compromised-row' : ''}`}
+                      onClick={() => toggleRow(sw.id)}
+                    >
+                      <td className="text-center text-on-surface-variant border-r-0">
+                        <ChevronRight size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                      </td>
+                      <td className="font-mono text-code-sm text-primary font-bold">{sw.name}</td>
+                      <td className="text-on-surface-variant">{sw.vendor?.name || '—'}</td>
+                      <td className="font-mono text-code-sm text-on-surface">{sw.version || '—'}</td>
+                      <td className="text-center font-mono text-code-sm">
+                        <span className={vulnCnt > 0 ? 'text-error' : 'text-on-surface'}>{vulnCnt}</span>
+                      </td>
+                      <td className="text-center">
+                        <span className={vulnCnt > 0 ? 'dot-red' : 'dot-green'} title={vulnCnt > 0 ? 'Compromised' : 'Secure'} />
+                      </td>
+                    </tr>
+
+                    {/* Expanded Detail Row */}
+                    {isExpanded && (
+                      <tr className="expanded-row">
+                        <td colSpan="6">
+                          <div className="accordion-content grid-cols-12 text-sm">
+                            <div className="col-span-8 flex flex-col gap-unit-4">
+                              <div>
+                                <div className="form-label">VENDOR INTEL</div>
+                                <div className="text-on-surface leading-relaxed border-l-2 border-outline-variant pl-4">
+                                  <div>Name: {sw.vendor?.name || 'Unknown'}</div>
+                                  {sw.vendor?.website && (
+                                    <div>Website: <a href={sw.vendor.website} className="text-primary hover:underline">{sw.vendor.website}</a></div>
+                                  )}
+                                  <div>Country: {sw.vendor?.country || 'Unknown'}</div>
+                                </div>
+                              </div>
+                              {vulnCnt > 0 && (
+                                <div>
+                                  <div className="form-label">AFFECTING VULNERABILITIES</div>
+                                  <div className="flex flex-col gap-2">
+                                    {sw.vulnerabilities.map(vuln => (
+                                      <div key={vuln.id} className="flex items-center gap-3 bg-surface p-2 border border-grid-line">
+                                        <span className="font-mono text-code-sm text-primary">{vuln.cve_id}</span>
+                                        <span className="text-on-surface-variant truncate text-xs">{vuln.summary}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="col-span-4 border-l border-grid-line pl-unit-6 flex flex-col gap-unit-4">
+                              <div className="form-label">ACTIONS</div>
+                              {isAuthenticated && (
+                                <>
+                                  <button className="btn-primary py-unit-2" onClick={() => openEdit(sw)}>
+                                    EDIT ASSET
+                                  </button>
+                                  <button className="btn-danger py-unit-2 w-full" onClick={() => handleDelete(sw.id)}>
+                                    DELETE ASSET
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {software.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="text-center py-unit-8 font-mono text-on-surface-variant">
+                    // no records found
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between border-t border-secondary-200 px-6 py-3">
-          <div className="flex items-center gap-2">
-            <select 
-              className="input py-1 pl-3 pr-8"
-              value={itemsPerPage}
-              onChange={handleItemsPerPageChange}
-            >
-              <option value={10}>10 per page</option>
-              <option value={25}>25 per page</option>
-              <option value={50}>50 per page</option>
-            </select>
-            <span className="text-sm text-secondary-600">
-              Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} results
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter(page => {
-                // Show first page, last page, current page, and pages around current page
-                const nearCurrent = Math.abs(page - currentPage) <= 1;
-                return page === 1 || page === totalPages || nearCurrent;
-              })
-              .map((page, index, array) => (
-                <React.Fragment key={page}>
-                  {index > 0 && array[index - 1] !== page - 1 && (
-                    <span className="text-secondary-400">...</span>
-                  )}
-                  <button 
-                    className={`btn-secondary py-1 px-3 ${currentPage === page ? 'bg-primary-100 text-primary-700' : ''}`}
-                    onClick={() => handlePageChange(page)}
-                  >
-                    {page}
-                  </button>
-                </React.Fragment>
-              ))
-            }
-            <button 
-              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
       </div>
 
-      {/* Selected Software Details */}
-      {selectedSoftware && (
-        <div className="card p-6 space-y-6">
-          <div>
-            <h2 className="text-2xl font-display font-bold text-secondary-900">
-              Software Details
-            </h2>
-            <div className="text-sm text-secondary-600">
-              Last updated: {new Date(selectedSoftware.updated_at || Date.now()).toLocaleDateString()}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-6">
+      {/* Right Drawer Form */}
+      <Drawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={isEditing ? 'EDIT ASSET' : 'NEW ASSET'}
+        footer={
+          <>
+            <button type="button" onClick={() => setDrawerOpen(false)} className="btn-outline flex-1">CANCEL</button>
+            <button type="button" onClick={handleSave} disabled={loadingForm} className="btn-primary flex-1 disabled:opacity-50">
+              {loadingForm ? 'SAVING...' : 'COMMIT'}
+            </button>
+          </>
+        }
+      >
+        <form className="space-y-unit-6">
+          <div className="grid grid-cols-1 gap-unit-4">
             <div>
-              <h3 className="text-sm font-medium text-secondary-500">Software Name</h3>
-              <p className="mt-1 text-secondary-900">{selectedSoftware.name}</p>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-secondary-500">Vendor</h3>
-              <p className="mt-1 text-secondary-900">{selectedSoftware.vendor_name || 'Unknown Vendor'}</p>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-secondary-500">Version</h3>
-              <p className="mt-1 text-secondary-900">{selectedSoftware.version || 'N/A'}</p>
+              <label className="form-label">Asset Name</label>
+              <input type="text" className="input-underline" value={formData.name}
+                onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Exchange Server" required />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-secondary-500">Status</h3>
-              <span className="mt-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                Active
-              </span>
+              <label className="form-label">Version</label>
+              <input type="text" className="input-underline" value={formData.version}
+                onChange={e => setFormData({...formData, version: e.target.value})} placeholder="e.g. 2019 CU12" />
             </div>
-          </div>
-          <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm text-secondary-600 mb-1">
-                {selectedSoftware.description}
-              </h2>
+              <label className="form-label">Vendor</label>
+              <select className="input-underline-select" value={formData.vendor_id} onChange={e => setFormData({...formData, vendor_id: e.target.value})} required>
+                <option value="">Select vendor...</option>
+                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
             </div>
           </div>
-
-          <div className="flex justify-end gap-3">
-            {isAuthenticated && (
-              <>
-                <button
-                  onClick={(e) => handleDeleteSoftware(e, selectedSoftware.id)}
-                  className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
-                  title="Delete software"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete Software
-                </button>
-                <button 
-                  className="btn-primary"
-                  onClick={() => {
-                    setEditingSoftware({
-                      name: selectedSoftware.name,
-                      vendor_id: selectedSoftware.vendor_id,
-                      version: selectedSoftware.version || '',
-                      description: selectedSoftware.description || ''
-                    });
-                    setShowEditForm(true);
-                  }}
-                >
-                  Edit Software
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Edit Form */}
-      {showEditForm && selectedSoftware && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <h2 className="text-2xl font-display font-bold">Edit Software</h2>
-              <button onClick={() => setShowEditForm(false)} className="text-secondary-500 hover:text-secondary-700">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                handleEditSoftware();
-              }} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="edit-name" className="block text-sm font-medium text-secondary-700">
-                      Software Name
-                    </label>
-                    <input
-                      type="text"
-                      id="edit-name"
-                      value={editingSoftware.name}
-                      onChange={(e) => setEditingSoftware({ ...editingSoftware, name: e.target.value })}
-                      className="input mt-1 w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="edit-vendor" className="block text-sm font-medium text-secondary-700">
-                      Vendor
-                    </label>
-                    <select
-                      id="edit-vendor"
-                      value={editingSoftware.vendor_id}
-                      onChange={(e) => setEditingSoftware({ ...editingSoftware, vendor_id: e.target.value })}
-                      className="input mt-1 w-full"
-                      required
-                    >
-                      <option value="">Select a vendor...</option>
-                      {vendors.map((vendor) => (
-                        <option key={vendor.id} value={vendor.id}>
-                          {vendor.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="edit-version" className="block text-sm font-medium text-secondary-700">
-                      Version
-                    </label>
-                    <input
-                      type="text"
-                      id="edit-version"
-                      value={editingSoftware.version}
-                      onChange={(e) => setEditingSoftware({ ...editingSoftware, version: e.target.value })}
-                      className="input mt-1 w-full"
-                      placeholder="e.g., 1.0.0"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-secondary-700">Description</label>
-                  <textarea
-                    className="input mt-1 w-full"
-                    rows="4"
-                    placeholder="Description of the software"
-                    value={editingSoftware.description}
-                    onChange={(e) => setEditingSoftware({...editingSoftware, description: e.target.value})}
-                    required
-                  ></textarea>
-                </div>
-                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowEditForm(false)}
-                    className="btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-primary">
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+        </form>
+      </Drawer>
     </div>
   );
-};
-
-export default Software;
+}

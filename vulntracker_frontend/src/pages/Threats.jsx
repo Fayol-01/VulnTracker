@@ -1,374 +1,241 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Filter, ArrowLeft, ArrowRight, Trash2, X } from 'lucide-react';
+import { Plus, ChevronRight, Filter } from 'lucide-react';
 import { api } from '../services/api';
-import { supabase } from '../services/supabase';
+import Drawer from '../components/Drawer';
+import { useAuth } from '../contexts/AuthContext';
 
-const Threats = () => {
-  const [threats, setThreats] = useState([]);
-  const [threatTypes, setThreatTypes] = useState([]);
-  const [selectedThreat, setSelectedThreat] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [newThreat, setNewThreat] = useState({
-    name: '',
-    description: '',
-    threat_type_id: ''
-  });
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [editingThreat, setEditingThreat] = useState({
-    name: '',
-    description: '',
-    threat_type_id: ''
-  });
+const BLANK_THREAT = { name: '', description: '', threat_type_id: '' };
+
+const SEV = { Critical: 'cr', High: 'hi', Medium: 'me', Low: 'lo' };
+
+export default function Threats() {
+  const [threats, setThreats]           = useState([]);
+  const [threatTypes, setThreatTypes]   = useState([]);
+  const [expandedId, setExpandedId]     = useState(null);
+  
+  // Drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isEditing, setIsEditing]   = useState(false);
+  const [formData, setFormData]     = useState({ ...BLANK_THREAT });
+  const [loadingForm, setLoadingForm] = useState(false);
+  
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setIsLoading(true);
-        const [threatsData, threatTypesData] = await Promise.all([
-          api.getThreats(),
-          api.getThreatTypes()
-        ]);
-
+        const [threatsData, threatTypesData] = await Promise.all([api.getThreats(), api.getThreatTypes()]);
         setThreats(Array.isArray(threatsData) ? threatsData : []);
         setThreatTypes(Array.isArray(threatTypesData) ? threatTypesData : []);
-      } catch (err) {
-        setError('Failed to fetch threats data');
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
+      } catch { console.error('Failed to fetch data'); }
     };
-
     fetchData();
-
-    // Check authentication status
-    const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      setIsAuthenticated(!!data.session);
-    };
-    checkAuth();
   }, []);
 
-  const handleCreateThreat = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await api.createThreat(newThreat);
-      setThreats([response, ...threats]);
-      setShowCreateForm(false);
-      setNewThreat({ name: '', description: '', threat_type_id: '' });
-    } catch (err) {
-      console.error('Error creating threat:', err);
-    }
+  const openCreate = () => {
+    setFormData({ ...BLANK_THREAT });
+    setIsEditing(false);
+    setDrawerOpen(true);
   };
 
-  const handleDeleteThreat = async (e, id) => {
-    e.stopPropagation(); // Prevent row click event
-    if (!window.confirm('Are you sure you want to delete this threat? This cannot be undone.')) {
-      return;
-    }
-    
+  const openEdit = (threat) => {
+    setFormData({
+      id: threat.id,
+      name: threat.name,
+      description: threat.description,
+      threat_type_id: threat.threat_type_id || ''
+    });
+    setIsEditing(true);
+    setDrawerOpen(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setLoadingForm(true);
+    try {
+      if (isEditing) {
+        const updated = await api.updateThreat(formData.id, formData);
+        setThreats(p => p.map(t => t.id === formData.id ? { ...t, ...updated, vulnerabilities: t.vulnerabilities } : t));
+      } else {
+        const created = await api.createThreat(formData);
+        setThreats(p => [created, ...p]);
+      }
+      setDrawerOpen(false);
+    } catch { alert('Failed to save threat'); }
+    finally { setLoadingForm(false); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this threat node?')) return;
     try {
       await api.deleteThreat(id);
-      setThreats(threats.filter(item => item.id !== id));
-      if (selectedThreat?.id === id) {
-        setSelectedThreat(null);
-      }
+      setThreats(p => p.filter(t => t.id !== id));
+      if (expandedId === id) setExpandedId(null);
     } catch (error) {
-      console.error('Error deleting threat:', error);
-      if (error.message.includes('Cannot delete threat that has vulnerabilities')) {
-        alert('Cannot delete threat that has vulnerabilities. Remove the vulnerabilities first.');
-      } else {
-        alert('Error deleting threat. Please try again.');
-      }
+      if (error.message?.includes('vulnerabilities')) {
+        alert('Cannot delete — threat has linked vulnerabilities.');
+      } else { alert('Error deleting threat.'); }
     }
   };
 
-  // Calculate pagination values
-  const totalItems = threats.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentThreats = threats.slice(startIndex, endIndex);
-
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-    }
+  const toggleRow = (id) => {
+    setExpandedId(expandedId === id ? null : id);
   };
-
-  const handleItemsPerPageChange = (e) => {
-    const newItemsPerPage = parseInt(e.target.value);
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1); // Reset to first page when changing items per page
-  };
-
-  if (isLoading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div></div>;
-  if (error) return <div className="flex items-center justify-center min-h-screen"><div className="bg-red-50 text-red-500 p-4 rounded-lg">{error}</div></div>;
 
   return (
-    <div className="space-y-6">
+    <div className="p-container-margin space-y-unit-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-display font-bold text-secondary-900">Security Threats</h1>
-        <div className="flex gap-3">
-          <button className="btn-secondary inline-flex items-center"><Filter className="w-4 h-4 mr-2" />Filter</button>
-          <button className="btn-primary inline-flex items-center" onClick={() => setShowCreateForm(true)}>
-            <Plus className="w-4 h-4 mr-2" />New Threat
+      <div className="flex items-center justify-between border-b border-grid-line pb-unit-4">
+        <h1 className="page-title">Threat Operations</h1>
+        <div className="flex gap-unit-4">
+          <button className="btn-outline">
+            <Filter size={14} /> FILTER
           </button>
+          {isAuthenticated && (
+            <button className="btn-primary px-unit-4 w-auto py-unit-2" onClick={openCreate}>
+              <Plus size={14} /> NEW THREAT
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Create Form */}
-      {showCreateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <h2 className="text-2xl font-display font-bold">Create New Threat</h2>
-              <button onClick={() => setShowCreateForm(false)} className="text-secondary-500 hover:text-secondary-700">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
-              <form onSubmit={handleCreateThreat} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-secondary-700">Name</label>
-                    <input type="text" id="name" value={newThreat.name} onChange={(e) => setNewThreat({...newThreat, name: e.target.value})} className="input mt-1 w-full" required />
-                  </div>
-                  <div>
-                    <label htmlFor="threat_type" className="block text-sm font-medium text-secondary-700">Threat Type</label>
-                    <select id="threat_type" value={newThreat.threat_type_id} onChange={(e) => setNewThreat({...newThreat, threat_type_id: e.target.value})} className="input mt-1 w-full" required>
-                      <option value="">Select a threat type...</option>
-                      {threatTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium text-secondary-700">Description</label>
-                  <textarea id="description" value={newThreat.description} onChange={(e) => setNewThreat({...newThreat, description: e.target.value})} className="input mt-1 w-full" rows="4" required />
-                </div>
-                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
-                  <button type="button" onClick={() => setShowCreateForm(false)} className="btn-secondary">Cancel</button>
-                  <button type="submit" className="btn-primary">Create Threat</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Form */}
-      {showEditForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <h2 className="text-2xl font-display font-bold">Edit Threat</h2>
-              <button onClick={() => setShowEditForm(false)} className="text-secondary-500 hover:text-secondary-700">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="overflow-y-auto flex-grow pr-2 custom-scrollbar">
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  const response = await api.updateThreat(editingThreat.id, editingThreat);
-                  setThreats(threats.map(threat => 
-                    threat.id === editingThreat.id ? { ...threat, ...response } : threat
-                  ));
-                  setSelectedThreat({ ...selectedThreat, ...response });
-                  setShowEditForm(false);
-                } catch (err) {
-                  console.error('Error updating threat:', err);
-                  alert('Error updating threat. Please try again.');
-                }
-              }} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="edit_name" className="block text-sm font-medium text-secondary-700">Name</label>
-                    <input type="text" id="edit_name" value={editingThreat.name} onChange={(e) => setEditingThreat({...editingThreat, name: e.target.value})} className="input mt-1 w-full" required />
-                  </div>
-                  <div>
-                    <label htmlFor="edit_threat_type" className="block text-sm font-medium text-secondary-700">Threat Type</label>
-                    <select id="edit_threat_type" value={editingThreat.threat_type_id} onChange={(e) => setEditingThreat({...editingThreat, threat_type_id: e.target.value})} className="input mt-1 w-full" required>
-                      <option value="">Select a threat type...</option>
-                      {threatTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="edit_description" className="block text-sm font-medium text-secondary-700">Description</label>
-                  <textarea id="edit_description" value={editingThreat.description} onChange={(e) => setEditingThreat({...editingThreat, description: e.target.value})} className="input mt-1 w-full" rows="4" required />
-                </div>
-                <div className="flex justify-end gap-3 pt-4 border-t mt-6">
-                  <button type="button" onClick={() => setShowEditForm(false)} className="btn-secondary">Cancel</button>
-                  <button type="submit" className="btn-primary">Save Changes</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Threat Table */}
-      <div className="card overflow-hidden">
+      {/* Table */}
+      <div className="border border-grid-line bg-surface-container-lowest overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="vt-table">
             <thead>
-              <tr className="border-b border-secondary-200">
-                <th className="table-header">Name</th>
-                <th className="table-header">Type</th>
-                <th className="table-header">Description</th>
-                <th className="table-header">Related Vulnerabilities</th>
+              <tr>
+                <th className="w-10 text-center"></th>
+                <th className="w-64">THREAT NAME</th>
+                <th className="w-48">TYPE</th>
+                <th>DESCRIPTION</th>
+                <th className="w-32 text-center">LINKED CVEs</th>
               </tr>
             </thead>
             <tbody>
-              {currentThreats.map((threat) => (
-                <tr key={threat.id} onClick={() => setSelectedThreat(threat)} className="border-b border-secondary-200 hover:bg-secondary-50 cursor-pointer transition-colors">
-                  <td className="table-cell font-medium text-primary-600">{threat.name}</td>
-                  <td className="table-cell">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">{threat.threat_type_name}</span>
-                  </td>
-                  <td className="table-cell truncate max-w-md">{threat.description}</td>
-                  <td className="table-cell">
-                    {threat.vulnerabilities?.length || 0}
+              {threats.map(threat => {
+                const isExpanded = expandedId === threat.id;
+                
+                return (
+                  <React.Fragment key={threat.id}>
+                    {/* Main Row */}
+                    <tr 
+                      className={`main-row ${isExpanded ? 'active-row' : ''}`}
+                      onClick={() => toggleRow(threat.id)}
+                    >
+                      <td className="text-center text-on-surface-variant border-r-0">
+                        <ChevronRight size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                      </td>
+                      <td className="font-mono text-code-sm text-primary font-bold">{threat.name}</td>
+                      <td>
+                        <span className="status-pill">{threat.threat_type_name || '—'}</span>
+                      </td>
+                      <td className="text-on-surface-variant truncate max-w-xs">{threat.description}</td>
+                      <td className="text-center font-mono text-code-sm">
+                        {threat.vulnerabilities?.length || 0}
+                      </td>
+                    </tr>
+
+                    {/* Expanded Detail Row */}
+                    {isExpanded && (
+                      <tr className="expanded-row">
+                        <td colSpan="5">
+                          <div className="accordion-content grid-cols-12 text-sm">
+                            <div className="col-span-8 flex flex-col gap-unit-4">
+                              <div>
+                                <div className="form-label">DESCRIPTION</div>
+                                <p className="text-on-surface leading-relaxed border-l-2 border-outline-variant pl-4">
+                                  {threat.description || 'No description provided.'}
+                                </p>
+                              </div>
+                              {threat.vulnerabilities?.length > 0 && (
+                                <div>
+                                  <div className="form-label">LINKED CVEs</div>
+                                  <div className="flex flex-col gap-2">
+                                    {threat.vulnerabilities.map(vuln => {
+                                      const sCode = SEV[vuln.severity] || 'lo';
+                                      return (
+                                        <div key={vuln.id} className="flex items-center gap-3 bg-surface p-2 border border-grid-line">
+                                          <span className="font-mono text-code-sm text-primary">{vuln.cve_id}</span>
+                                          <span className={`sev-tag sev-${sCode} text-[9px] w-5 h-5`} title={vuln.severity}>
+                                            {sCode.toUpperCase()}
+                                          </span>
+                                          <span className="text-on-surface-variant truncate text-xs">{vuln.summary}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="col-span-4 border-l border-grid-line pl-unit-6 flex flex-col gap-unit-4">
+                              <div className="form-label">ACTIONS</div>
+                              {isAuthenticated && (
+                                <>
+                                  <button className="btn-primary py-unit-2" onClick={() => openEdit(threat)}>
+                                    EDIT RECORD
+                                  </button>
+                                  <button className="btn-danger py-unit-2 w-full" onClick={() => handleDelete(threat.id)}>
+                                    DELETE RECORD
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {threats.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="text-center py-unit-8 font-mono text-on-surface-variant">
+                    // no records found
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
-        
-        {/* Pagination */}
-        <div className="flex items-center justify-between border-t border-secondary-200 px-6 py-3">
-          <div className="flex items-center gap-2">
-            <select 
-              className="input py-1 pl-3 pr-8"
-              value={itemsPerPage}
-              onChange={handleItemsPerPageChange}
-            >
-              <option value={10}>10 per page</option>
-              <option value={25}>25 per page</option>
-              <option value={50}>50 per page</option>
-            </select>
-            <span className="text-sm text-secondary-600">
-              Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems} results
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter(page => {
-                // Show first page, last page, current page, and pages around current page
-                const nearCurrent = Math.abs(page - currentPage) <= 1;
-                return page === 1 || page === totalPages || nearCurrent;
-              })
-              .map((page, index, array) => (
-                <React.Fragment key={page}>
-                  {index > 0 && array[index - 1] !== page - 1 && (
-                    <span className="text-secondary-400">...</span>
-                  )}
-                  <button 
-                    className={`btn-secondary py-1 px-3 ${currentPage === page ? 'bg-primary-100 text-primary-700' : ''}`}
-                    onClick={() => handlePageChange(page)}
-                  >
-                    {page}
-                  </button>
-                </React.Fragment>
-              ))
-            }
-            <button 
-              className="btn-secondary py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
       </div>
-        
 
-      {/* Selected Threat */}
-      {selectedThreat && (
-        <div className="card p-6 space-y-6">
-          <div className="flex items-center justify-between">
+      {/* Right Drawer Form */}
+      <Drawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={isEditing ? 'EDIT THREAT NODE' : 'NEW THREAT NODE'}
+        footer={
+          <>
+            <button type="button" onClick={() => setDrawerOpen(false)} className="btn-outline flex-1">CANCEL</button>
+            <button type="button" onClick={handleSave} disabled={loadingForm} className="btn-primary flex-1 disabled:opacity-50">
+              {loadingForm ? 'SAVING...' : 'COMMIT'}
+            </button>
+          </>
+        }
+      >
+        <form className="space-y-unit-6">
+          <div className="grid grid-cols-1 gap-unit-4">
             <div>
-              <h2 className="text-2xl font-display font-bold text-secondary-900">{selectedThreat.name}</h2>
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">{selectedThreat.threat_type_name}</span>
+              <label className="form-label">Threat Name</label>
+              <input type="text" className="input-underline" value={formData.name}
+                onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Lazarus Group" required />
             </div>
-            {isAuthenticated && (
-              <div className="flex gap-3">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setShowEditForm(true);
-                    setEditingThreat({
-                      id: selectedThreat.id,
-                      name: selectedThreat.name,
-                      description: selectedThreat.description,
-                      threat_type_id: selectedThreat.threat_type_id
-                    });
-                  }}
-                  className="btn-primary inline-flex items-center"
-                  title="Edit threat"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={(e) => handleDeleteThreat(e, selectedThreat.id)}
-                  className="btn-secondary bg-red-50 text-red-600 hover:bg-red-100 inline-flex items-center"
-                  title="Delete threat"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete Threat
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="prose max-w-none">
-            <p className="text-secondary-600">{selectedThreat.description}</p>
-          </div>
-
-          {selectedThreat.vulnerabilities?.length > 0 && (
             <div>
-              <h3 className="font-display font-semibold text-lg mb-3">Associated Vulnerabilities</h3>
-              <div className="space-y-3">
-                {selectedThreat.vulnerabilities.map((vuln) => {
-                  const software = vuln.software || {};
-                  const vendor = software.vendor || {};
-                  return (
-                    <div key={vuln.id} className="card p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium text-primary-600">{vuln.cve_id}</div>
-                          <div className="text-sm text-secondary-600">{vuln.summary}</div>
-                          <div className="text-sm text-secondary-500 mt-1">{software.name} {software.version && `(${software.version})`} {vendor.name && `- ${vendor.name}`}</div>
-                        </div>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${vuln.severity.toLowerCase()}-100 text-${vuln.severity.toLowerCase()}-800`}>
-                          {vuln.severity}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <label className="form-label">Threat Type</label>
+              <select className="input-underline-select" value={formData.threat_type_id} onChange={e => setFormData({...formData, threat_type_id: e.target.value})} required>
+                <option value="">Select type...</option>
+                {threatTypes.map(tt => <option key={tt.id} value={tt.id}>{tt.name}</option>)}
+              </select>
             </div>
-          )}
-        </div>
-      )}
+            <div>
+              <label className="form-label">Description</label>
+              <textarea className="input-underline min-h-[120px]" value={formData.description}
+                onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Threat description..." required />
+            </div>
+          </div>
+        </form>
+      </Drawer>
     </div>
   );
-};
-
-export default Threats;
+}
